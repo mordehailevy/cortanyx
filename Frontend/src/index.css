@@ -1,0 +1,130 @@
+@import 'tailwindcss';
+@import 'highlight.js/styles/github-dark.css';
+@plugin '@tailwindcss/typography';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design system (ui-ux-pro-max: "AI-Native UI") - light theme */
+:root {
+  --color-primary: #2563eb;
+  --color-on-primary: #ffffff;
+  --color-secondary: #6366f1;
+  --color-accent: #059669;
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-muted: #f1f5fd;
+  --color-muted-foreground: #475569;
+  --color-border: #e4ecfc;
+  --color-destructive: #dc2626;
+  --color-ring: #2563eb;
+}
+
+.dark {
+  --color-primary: #3b82f6;
+  --color-on-primary: #ffffff;
+  --color-secondary: #818cf8;
+  --color-accent: #34d399;
+  --color-background: #0b1120;
+  --color-surface: #0f172a;
+  --color-foreground: #e2e8f0;
+  --color-muted: #1e293b;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #1e293b;
+  --color-destructive: #f87171;
+  --color-ring: #60a5fa;
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-on-primary: var(--color-on-primary);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-foreground: var(--color-foreground);
+  --color-muted: var(--color-muted);
+  --color-muted-foreground: var(--color-muted-foreground);
+  --color-border: var(--color-border);
+  --color-destructive: var(--color-destructive);
+  --color-ring: var(--color-ring);
+  --font-sans: 'Inter', 'Noto Sans Hebrew', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Markdown inside assistant messages */
+.prose pre {
+  font-variant-ligatures: none;
+  background: #0d1117;
+  border-radius: 0 0 12px 12px;
+  margin: 0;
+  padding: 1rem;
+  direction: ltr;
+}
+.prose :not(pre) > code {
+  background: var(--color-muted);
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+  content: none;
+}
+.prose table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* blinking caret while the answer streams */
+.streaming-caret > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.45em;
+  height: 1em;
+  margin-inline-start: 3px;
+  vertical-align: text-bottom;
+  background: var(--color-primary);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}

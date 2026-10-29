@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Blocks any commit that contains a .env file or something that looks like a secret key.
+set -euo pipefail
+
+if git diff --cached --name-only | grep -E '(^|/)\.env$' >/dev/null; then
+  echo "BLOCKED: a .env file is staged. Secrets must never be committed." >&2
+  exit 1
+fi
+
+if git diff --cached -U0 --no-color | grep -E '^\+' | grep -E 'sk-(proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}' >/dev/null; then
+  echo "BLOCKED: the staged changes contain what looks like an OpenAI API key." >&2
+  exit 1
+fi

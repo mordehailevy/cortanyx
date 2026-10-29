@@ -1,0 +1,20 @@
+# Secrets - never commit
+.env
+*.env
+!.env.example
+
+# Python
+Backend/env/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Local tooling / OS
+.claude/
+.DS_Store
+submission/
+*.zip

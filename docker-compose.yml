@@ -1,0 +1,20 @@
+# Optional: a ready MySQL for the project (if MySQL is not installed locally).
+#   docker compose up -d
+# Then use in Backend/.env:
+#   DATABASE_URL=mysql+pymysql://chat_app:chat_app_password@localhost:3307/chatgpt_clone?charset=utf8mb4
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: chatgpt_clone
+      MYSQL_USER: chat_app
+      MYSQL_PASSWORD: chat_app_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./Database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - mysql-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+volumes:
+  mysql-data:
