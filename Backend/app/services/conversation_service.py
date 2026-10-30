@@ -13,7 +13,8 @@ DEFAULT_TITLE = "New conversation"
 
 
 def create_conversation(db: Session) -> Conversation:
-    conv = Conversation(model=get_settings().openai_model, title=DEFAULT_TITLE)
+    now = datetime.now()  # same clock as updated_at and the age checks, whatever the database
+    conv = Conversation(model=get_settings().openai_model, title=DEFAULT_TITLE, created_at=now, updated_at=now)
     db.add(conv)
     db.commit()
     db.refresh(conv)
@@ -147,10 +148,12 @@ def set_title(db: Session, conversation_id: str, title: str) -> None:
 
 
 def delete_if_empty(db: Session, conversation_id: str) -> None:
-    """Remove a conversation that never got any message (e.g. tab closed before the first word)."""
+    """Remove a conversation created for a message that got no answer (e.g. tab closed before
+    the first word). An empty conversation created earlier on purpose (API, Postman) is kept."""
     conv = db.get(Conversation, conversation_id)
     has_message = db.scalar(select(Message.id).where(Message.conversation_id == conversation_id).limit(1))
-    if conv is not None and has_message is None and conv.title == DEFAULT_TITLE:
+    just_created = conv is not None and conv.created_at >= datetime.now() - timedelta(seconds=30)
+    if conv is not None and has_message is None and conv.title == DEFAULT_TITLE and just_created:
         db.delete(conv)
         db.commit()
 

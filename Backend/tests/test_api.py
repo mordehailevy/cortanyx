@@ -404,3 +404,16 @@ def test_new_conversation_left_before_first_word_is_removed(client):
     cid = new_conversation(client)
     _cancel_after(cid, SlowAI([]), events_before_cancel=1)
     assert client.get(f"/api/conversations/{cid}").status_code == 404
+
+
+def test_older_empty_conversation_is_kept_after_a_stop(client, session_factory):
+    from datetime import datetime, timedelta
+
+    from app.models import Conversation
+
+    cid = new_conversation(client)
+    with session_factory() as s:  # created a while ago (e.g. with Postman), then opened in the app
+        s.get(Conversation, cid).created_at = datetime.now() - timedelta(minutes=5)
+        s.commit()
+    _cancel_after(cid, SlowAI([]), events_before_cancel=1)
+    assert client.get(f"/api/conversations/{cid}").status_code == 200
