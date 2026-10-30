@@ -34,7 +34,11 @@ export function useChat() {
   /** conversations deleted here because their first message failed: never reopen them by URL */
   const discardedRef = useRef(new Set<string>())
   /** text given back to the input when a message was cancelled before any answer */
-  const [draft, setDraft] = useState<{ text: string; n: number } | null>(null)
+  // a message sent just before a page reload, with no answer yet, comes back in the input
+  const [draft, setDraft] = useState<{ text: string; n: number } | null>(() => {
+    const text = pendingDraft.take()
+    return text ? { text, n: 1 } : null
+  })
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -58,16 +62,29 @@ export function useChat() {
    * After a Stop the server may have saved a few more words than were displayed:
    * reload the conversation so the screen shows exactly what is stored.
    */
-  const syncFromServer = (cid: string) => {
-    window.setTimeout(() => {
-      api
-        .getConversation(cid)
-        .then((detail) => {
-          if (activeRef.current === cid && !abortRef.current) setMessages(detail.messages)
-        })
-        .catch(() => {})
-    }, 600)
-  }
+  const syncFromServer = useCallback((cid: string) => {
+    const attempt = (n: number) =>
+      window.setTimeout(() => {
+        api
+          .getConversation(cid)
+          .then((detail) => {
+            if (activeRef.current !== cid || abortRef.current) return
+            // the stopped answer may not be saved yet (slow database): try again a few times
+            // (interrupted is only set on the saved partial answer, never on an older one)
+            if (!detail.messages.at(-1)?.interrupted) {
+              if (n < 4) attempt(n + 1)
+              return
+            }
+            // merge instead of replacing: keep each bubble's on-screen id (React key), so
+            // nothing re-mounts or replays its entrance animation
+            setMessages((shown) =>
+              detail.messages.map((m, i) => (shown[i]?.role === m.role ? { ...shown[i], ...m, id: shown[i].id } : m)),
+            )
+          })
+          .catch(() => {})
+      }, 500 * n)
+    attempt(1)
+  }, [])
 
   const setTitle = (cid: string, title: string) =>
     setConversations((list) => list.map((c) => (c.id === cid ? { ...c, title } : c)))
@@ -78,6 +95,7 @@ export function useChat() {
       if (!content || isStreaming) return
       setError(null)
       setDraft(consumeDraft)
+      pendingDraft.save(content)
       setSendCount((n) => n + 1)
       const userTmp = nextTempId()
       const botTmp = nextTempId()
@@ -100,6 +118,17 @@ export function useChat() {
       try {
         if (!cid) {
           const conv = await api.createConversation()
+          if (controller.signal.aborted) {
+            // cancelled while the conversation was being created: drop it
+            await api.deleteConversation(conv.id).catch(() => {})
+            if (activeRef.current === conversationId) {
+              // Stop pressed (still on this screen): remove the bubbles, give the text back
+              setMessages((list) => list.filter((m) => m.id !== userTmp && m.id !== botTmp))
+              setDraft((d) => ({ text: content, n: (d?.n ?? 0) + 1 }))
+            }
+            // else another conversation was opened: leave the screen and the URL to it
+            return
+          }
           cid = conv.id
           createdHere = true
           activeRef.current = cid
@@ -116,6 +145,7 @@ export function useChat() {
               setMessages((list) => list.map((m) => (m.id === userTmp ? { ...saved } : m)))
             },
             onDelta: (delta) => {
+              if (!gotText) pendingDraft.clear() // the answer started: the question is saved
               gotText = true
               patchBot((m) => ({ ...m, content: m.content + delta }))
             },
@@ -149,12 +179,13 @@ export function useChat() {
           }
         }
       } finally {
+        pendingDraft.clear() // in this page the text was handled (answered, or given back above)
         abortRef.current = null
         setIsStreaming(false)
         void refreshHistory()
       }
     },
-    [conversationId, isStreaming, refreshHistory],
+    [conversationId, isStreaming, refreshHistory, syncFromServer],
   )
 
   /** Replace the last answer with a new one (after a Stop, a cut, or just to try again). */
@@ -202,7 +233,7 @@ export function useChat() {
       setIsStreaming(false)
       void refreshHistory()
     }
-  }, [conversationId, isStreaming, messages, refreshHistory])
+  }, [conversationId, isStreaming, messages, refreshHistory, syncFromServer])
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
@@ -296,6 +327,34 @@ export function useChat() {
 }
 
 export type ChatState = ReturnType<typeof useChat>
+
+/** Last message sent, kept for this tab until its answer starts (survives a reload). */
+const pendingDraft = {
+  key: 'cortanyx-pending-message',
+  save(text: string) {
+    try {
+      sessionStorage.setItem(this.key, text)
+    } catch {
+      /* storage unavailable: nothing is restored after a reload */
+    }
+  },
+  clear() {
+    try {
+      sessionStorage.removeItem(this.key)
+    } catch {
+      /* storage unavailable */
+    }
+  },
+  take(): string | null {
+    try {
+      const text = sessionStorage.getItem(this.key)
+      sessionStorage.removeItem(this.key)
+      return text
+    } catch {
+      return null
+    }
+  },
+}
 
 /** A given-back text fills the input once; afterwards the input starts empty again. */
 const consumeDraft = (d: { text: string; n: number } | null) => (d && d.text ? { text: '', n: d.n } : d)

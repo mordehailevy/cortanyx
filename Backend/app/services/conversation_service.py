@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Conversation, Message, Role
+from app.models import Conversation, Message, Role, UsageLog
 
 DEFAULT_TITLE = "New conversation"
 
@@ -159,6 +159,17 @@ def fallback_title(user_text: str) -> str:
     return (words[:57].rsplit(" ", 1)[0] + "…") if len(words) > 60 else (words or DEFAULT_TITLE)
 
 
+def estimate_tokens(*texts: str) -> int:
+    """About 4 characters per token: used when OpenAI did not report usage (stopped answer, title)."""
+    return max(1, sum(len(t) for t in texts) // 4)
+
+
+def log_usage(db: Session, kind: str, tokens: int) -> None:
+    db.add(UsageLog(kind=kind, tokens=tokens))
+    db.commit()
+
+
 def tokens_last_24h(db: Session) -> int:
+    """Tokens spent in the last 24 hours, from the usage log (not from messages, which can be deleted)."""
     since = datetime.now() - timedelta(hours=24)
-    return int(db.scalar(select(func.coalesce(func.sum(Message.tokens), 0)).where(Message.created_at >= since)) or 0)
+    return int(db.scalar(select(func.coalesce(func.sum(UsageLog.tokens), 0)).where(UsageLog.created_at >= since)) or 0)

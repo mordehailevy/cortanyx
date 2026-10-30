@@ -36,11 +36,11 @@ React SPA → Python FastAPI REST API → MySQL, with OpenAI called **only from 
 - **Hebrew / English / French**: every message sets its own direction automatically (`dir="auto"`), the model answers in the user's language.
 - **Claude-style sidebar**: collapsible, **pinned** and recent conversations, search, per-conversation menu (pin, rename, delete), AI-generated titles, a URL per conversation (`/chat/<id>`).
 - Clear **error handling**: missing or invalid key, quota, network: friendly message + **Retry**; a failed message is rolled back so the database never holds unanswered messages.
-- **Spending guards**: 20 messages per minute per client, a daily token budget (`DAILY_TOKEN_BUDGET`), 8000-character messages, last 40 messages sent as context.
+- **Spending guards**: 20 messages per minute per client, a daily token budget (`DAILY_TOKEN_BUDGET`) read from a usage log that deleting or regenerating cannot reset, 8000-character messages, context capped at 40 messages and 48 000 characters.
 - **Light / dark theme**, responsive 375 → 1440 px, accessible (WCAG 2.1 AA contrast, full keyboard use, focus kept in dialogs and the mobile drawer, screen-reader labels, `lang="he"` on Hebrew text, `prefers-reduced-motion`).
-- **46 automated tests**: 37 server tests (pytest, fake OpenAI client: no network, no cost) for context, streaming contract (Stop before / during an answer), regenerate, pinning, validation, limits, security; and 9 browser-side tests (Vitest) for the streaming reader.
+- **48 automated tests**: 39 server tests (pytest, fake OpenAI client: no network, no cost) for context, streaming contract (Stop before / during an answer), regenerate, pinning, validation, limits, security; and 9 browser-side tests (Vitest) for the streaming reader.
 - **Postman collection** (13 requests with test scripts, including the SSE stream) and interactive Swagger docs at `/docs`.
-- **Audited** by 7 specialised review agents (brief compliance, senior code review, real users, security, design and accessibility, the course grader, QA): see `.claude/agents/` and the master skill `.claude/skills/audit-maitre/`.
+- **Audited** before delivery by 7 specialised review agents (brief compliance, senior code review, real users, security, design and accessibility, the course grader, QA), round after round until all of them validated the project.
 
 ---
 
@@ -71,6 +71,8 @@ created_at  DATETIME(3)               tokens           INT NULL
 updated_at  DATETIME(3)               interrupted      BOOLEAN (stopped by the user)
                                       created_at       DATETIME(3)
 ```
+
+A third table, **`usage_log`**, records the tokens of every OpenAI call (answer, regeneration, title, stopped answer). It is not linked to conversations on purpose: deleting a conversation must not reset the daily budget.
 
 The view **`v_conversation_messages`** shows the data in a human-readable way
 (conversation id, title, sender `User` / `ChatGPT`, content, time):
@@ -191,7 +193,7 @@ The server is covered by pytest; these user flows are checked by hand before eac
 1. Send a message, then a follow-up that depends on it: the answer uses the context.
 2. Press **Stop** mid-answer: the partial answer stays, marked *Stopped*; **Regenerate** replaces it.
 3. Press **Stop** before the first word (or stop the server): the question disappears and its text comes back in the input.
-4. While an answer is streaming, open another conversation: the URL, title and messages are those of the new one.
+4. While an answer is streaming (or right after pressing Enter on a new chat), open another conversation: the URL, title and messages are those of the new one.
 5. Browser **Back** / **Forward** between `/` and conversations: the screen always matches the URL.
 6. Delete the open conversation, open `/chat/unknown-id`: you land on a new chat ("Conversation not found." for the bad link).
 7. Mobile width: open the menu, a conversation's "…" menu, Rename, then Escape: only the dialog closes and focus goes back to the "…" button.

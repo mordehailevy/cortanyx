@@ -54,3 +54,18 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now(), index=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class UsageLog(Base):
+    """One row per OpenAI call (answer, regeneration, title, stopped answer).
+
+    Never deleted with conversations: the daily token budget is computed from it,
+    so deleting or regenerating cannot reset the spending counter.
+    """
+
+    __tablename__ = "usage_log"
+
+    id: Mapped[int] = mapped_column(MessageId, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    tokens: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now(), index=True)

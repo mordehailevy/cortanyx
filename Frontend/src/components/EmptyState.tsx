@@ -62,7 +62,7 @@ export function EmptyState({
               whileHover={reduce ? undefined : { y: -2 }}
               whileTap={reduce ? undefined : { scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-muted-foreground transition-colors duration-200 hover:border-primary/50 hover:text-foreground"
+              className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-sm max-md:min-h-11 text-muted-foreground transition-colors duration-200 hover:border-primary/50 hover:text-foreground"
             >
               <s.icon className="size-4 text-primary" aria-hidden="true" />
               <span dir="auto">{s.title}</span>

@@ -18,6 +18,7 @@ CREATE DATABASE IF NOT EXISTS chatgpt_clone
 USE chatgpt_clone;
 
 DROP VIEW  IF EXISTS v_conversation_messages;
+DROP TABLE IF EXISTS usage_log;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS conversations;
 
@@ -49,6 +50,18 @@ CREATE TABLE messages (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Every message of every conversation, in order';
+
+-- One row per OpenAI call. Not linked to conversations on purpose: deleting a
+-- conversation must not reset the daily token budget computed from this table.
+CREATE TABLE usage_log (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  kind        VARCHAR(16)  NOT NULL COMMENT 'answer, regenerate, title or interrupted',
+  tokens      INT UNSIGNED NOT NULL COMMENT 'Tokens reported by OpenAI, or estimated (4 characters per token)',
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_usage_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Spending log used by the daily token budget';
 
 -- Human-readable view: anyone browsing the DB sees at a glance
 -- which conversation, who spoke (User / ChatGPT) and what was said.

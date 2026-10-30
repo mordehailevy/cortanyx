@@ -15,6 +15,7 @@ from app.models import Role
 from app.rate_limit import chat_rate_limit, daily_token_budget
 from app.schemas import ChatReply, ConversationDetail, ConversationOut, ConversationUpdate, MessageIn, MessageOut
 from app.services import conversation_service as svc
+from app.prompts import TITLE_PROMPT
 from app.services.openai_service import AIServiceError, OpenAIService, get_ai_service
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ async def _maybe_title(ai: OpenAIService, db: Session, conversation_id: str, use
         if conv.title != svc.DEFAULT_TITLE:
             return None
         title = await ai.make_title(user, assistant) or svc.fallback_title(user)
+        await run_in_threadpool(svc.log_usage, db, "title", svc.estimate_tokens(user[:1000], assistant[:1000], TITLE_PROMPT))
         await run_in_threadpool(svc.set_title, db, conversation_id, title)
         return title
     except Exception:
@@ -83,6 +85,9 @@ async def send_message(
         await run_in_threadpool(svc.delete_message, db, user_msg.id)
         raise
     assistant_msg = await run_in_threadpool(svc.add_message, db, conversation_id, Role.assistant, text, tokens)
+    await run_in_threadpool(
+        svc.log_usage, db, "answer", tokens or svc.estimate_tokens(text, *(m["content"] for m in history))
+    )
     await _maybe_title(ai, db, conversation_id, body.content, text)
     conv = await run_in_threadpool(svc.get_conversation, db, conversation_id)
     return ChatReply(
@@ -117,6 +122,7 @@ def _answer_stream(conversation_id: str, ai: OpenAIService, content: str | None)
         user_msg = None
         replaced_id: int | None = None
         user_text = content or ""
+        history: list[dict[str, str]] = []
         try:
             if content is not None:
                 user_msg = await run_in_threadpool(svc.add_message, session, conversation_id, Role.user, content)
@@ -149,12 +155,21 @@ def _answer_stream(conversation_id: str, ai: OpenAIService, content: str | None)
                 session.rollback()
                 raise
             saved = True
+            await run_in_threadpool(
+                svc.log_usage,
+                session,
+                "answer" if content is not None else "regenerate",
+                tokens or svc.estimate_tokens("".join(parts), *(m["content"] for m in history)),
+            )
             yield _sse("done", MessageOut.model_validate(assistant_msg).model_dump(mode="json"))
             title = await _maybe_title(ai, session, conversation_id, user_text, "".join(parts))
             if title:
                 yield _sse("title", {"title": title})
         except asyncio.CancelledError:
             # "Stop" pressed or page closed (client disconnected)
+            if history and not saved:
+                # the prompt was sent and some words generated: count them in the budget
+                svc.log_usage(session, "interrupted", svc.estimate_tokens("".join(parts), *(m["content"] for m in history)))
             if not saved and not inserting:
                 if parts:
                     svc.save_answer(session, conversation_id, "".join(parts), tokens, replaced_id, interrupted=True)

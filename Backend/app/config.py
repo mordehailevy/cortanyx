@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Spending guard: refuse new answers when the last 24 h used more tokens (0 = no limit)
     daily_token_budget: int = 500_000
     # Host names the API answers to (protects against DNS rebinding)
-    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    allowed_hosts: str = "localhost,127.0.0.1"
     enable_docs: bool = True
 
     @property

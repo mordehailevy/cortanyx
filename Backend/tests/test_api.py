@@ -361,3 +361,27 @@ def test_context_is_capped_in_characters(client, fake_ai, monkeypatch):
     client.post(f"/api/conversations/{cid}/messages", json={"content": "last"})
     sent = fake_ai.calls[-1]
     assert sent[-1]["content"] == "last" and all(m["content"] != "x" * 25 for m in sent)
+
+
+def test_budget_cannot_be_reset_by_deleting_or_regenerating(client, session_factory):
+    cid = new_conversation(client)
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Hi"})
+    with session_factory() as s:
+        after_answer = svc.tokens_last_24h(s)
+    assert after_answer >= 42  # the answer (and its title) are logged
+
+    client.post(f"/api/conversations/{cid}/regenerate")
+    with session_factory() as s:
+        after_regen = svc.tokens_last_24h(s)
+    assert after_regen > after_answer  # every regeneration costs
+
+    client.delete(f"/api/conversations/{cid}")
+    with session_factory() as s:
+        assert svc.tokens_last_24h(s) == after_regen  # deleting does not give tokens back
+
+
+def test_stopped_answer_is_counted_in_the_budget(client, session_factory):
+    cid = new_conversation(client)
+    _cancel_after(cid, SlowAI(["Once ", "upon "]), events_before_cancel=3)
+    with session_factory() as s:
+        assert svc.tokens_last_24h(s) > 0
