@@ -2,7 +2,6 @@ import {
   ArrowDown,
   ArrowUp,
   Info,
-  MessageSquare,
   Moon,
   MoreHorizontal,
   PanelLeftClose,
@@ -94,7 +93,6 @@ export function AppSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = 
         >
           <Plus className="size-5" />
         </button>
-        <RailLink to="/" label="Chat" icon={<MessageSquare className="size-5" />} />
         <RailLink to="/about" label="About" icon={<Info className="size-5" />} />
         <div className="mt-auto flex flex-col items-center gap-1">
           <button type="button" onClick={toggle} className={iconBtn} aria-label={theme === 'dark' ? 'Light theme' : 'Dark theme'}>
@@ -142,7 +140,6 @@ export function AppSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = 
           </span>
           Search chats
         </button>
-        <SideLink to="/" label="Chat" icon={<MessageSquare className="size-[18px]" />} onNavigate={onNavigate} />
         <SideLink to="/about" label="About" icon={<Info className="size-[18px]" />} onNavigate={onNavigate} />
       </nav>
 

@@ -25,7 +25,7 @@ React SPA → Python FastAPI REST API → MySQL, with OpenAI called **only from 
 | OpenAI called from the server only | `Backend/app/services/openai_service.py` is the only module that talks to OpenAI |
 | API key in a server-side `.env` | `Backend/.env` (ignored by git), template in `Backend/.env.example` |
 | `requirements.txt` | `Backend/requirements.txt` (pinned versions) |
-| Home page, About page, main menu | `/` (chat) and `/about`; the main menu is the sidebar (Chat, About) |
+| Home page, About page, main menu | `/` (chat) and `/about`; the main menu is the sidebar: "New chat" (home page) and "About" |
 | Database: who wrote each message, and which conversation | `messages.role` = `user` / `assistant`, `messages.conversation_id` → `conversations.id` (UUID) |
 
 **Extras**
