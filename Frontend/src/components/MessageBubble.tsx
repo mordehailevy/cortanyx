@@ -3,18 +3,18 @@ import { RotateCcw } from 'lucide-react'
 import { memo } from 'react'
 import type { UiMessage } from '../hooks/useChat'
 import { langOf } from '../lib/text'
-import { LogoMark } from './Logo'
 import { CopyButton } from './CopyButton'
 import { LazyMarkdown } from './LazyMarkdown'
 
+/** Discreet "thinking" indicator: three small dots that fade in turn. */
 function TypingDots() {
   return (
-    <span className="inline-flex items-center gap-1 py-2" role="status" aria-label="Cortanyx is thinking">
+    <span className="inline-flex items-center gap-1.5 py-2.5" role="status" aria-label="Cortanyx is thinking">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="size-2 animate-bounce rounded-full bg-muted-foreground/70"
-          style={{ animationDelay: `${i * 150}ms` }}
+          className="size-1.5 animate-pulse rounded-full bg-muted-foreground/60"
+          style={{ animationDelay: `${i * 200}ms` }}
         />
       ))}
     </span>
@@ -45,8 +45,6 @@ export const MessageBubble = memo(function MessageBubble({
       transition={{ type: 'spring', stiffness: 380, damping: 32 }}
       className={`group flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
     >
-      {!isUser && <LogoMark className="mt-1 size-8" />}
-
       <div className={`flex min-w-0 flex-col ${isUser ? 'max-w-[85%] items-end sm:max-w-[75%]' : 'flex-1 items-start'}`}>
         <span className="sr-only">{isUser ? 'You said:' : 'Cortanyx said:'}</span>
         {isUser ? (

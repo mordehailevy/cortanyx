@@ -417,3 +417,35 @@ def test_older_empty_conversation_is_kept_after_a_stop(client, session_factory):
         s.commit()
     _cancel_after(cid, SlowAI([]), events_before_cancel=1)
     assert client.get(f"/api/conversations/{cid}").status_code == 200
+
+
+# ---------------------------------------------------------------- pinned order (drag and drop)
+def _pinned_ids(client):
+    return [c["id"] for c in client.get("/api/conversations").json() if c["pinned"]]
+
+
+def test_pinning_appends_and_reorder_moves(client):
+    a, b, c = new_conversation(client), new_conversation(client), new_conversation(client)
+    for cid in (a, b, c):
+        client.patch(f"/api/conversations/{cid}", json={"pinned": True})
+    assert _pinned_ids(client) == [a, b, c]  # each new pin goes to the end
+
+    res = client.put("/api/conversations/pinned-order", json={"ids": [c, a, b]})
+    assert res.status_code == 200 and [x["id"] for x in res.json() if x["pinned"]] == [c, a, b]
+    assert _pinned_ids(client) == [c, a, b]
+
+    client.put("/api/conversations/pinned-order", json={"ids": [b]})  # unlisted ones keep their order after
+    assert _pinned_ids(client) == [b, c, a]
+
+    client.patch(f"/api/conversations/{c}", json={"pinned": False})
+    assert _pinned_ids(client) == [b, a]
+    assert client.get(f"/api/conversations/{c}").json()["pin_order"] is None
+
+
+def test_reorder_pinned_validation(client):
+    a, b = new_conversation(client), new_conversation(client)
+    client.patch(f"/api/conversations/{a}", json={"pinned": True})
+    assert client.put("/api/conversations/pinned-order", json={"ids": [a, b]}).status_code == 409
+    assert client.put("/api/conversations/pinned-order", json={"ids": [a, a]}).status_code == 422
+    assert client.put("/api/conversations/pinned-order", json={"ids": ["nope"]}).status_code == 404
+    assert client.put("/api/conversations/pinned-order", json={"ids": []}).status_code == 422

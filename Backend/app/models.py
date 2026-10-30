@@ -27,6 +27,8 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(120), default="New conversation", server_default="New conversation")
     model: Mapped[str] = mapped_column(String(64))
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # position among pinned conversations (drag and drop in the sidebar); NULL when not pinned
+    pin_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
     # last activity: only moved forward when a message is added (not on rename / pin)
     updated_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())

@@ -1,4 +1,6 @@
 import {
+  ArrowDown,
+  ArrowUp,
   Info,
   MessageSquare,
   Moon,
@@ -14,7 +16,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { memo, useState, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useState, type DragEvent, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useChatActions, useChatContext } from '../context/ChatContext'
 import { useTheme } from '../hooks/useTheme'
@@ -40,6 +42,26 @@ export function AppSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = 
   const { theme, toggle } = useTheme()
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
+  // drag and drop: the conversation being dragged and where it would land
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [drop, setDrop] = useState<{ section: SectionKind; index: number } | null>(null)
+  const { placeConversation } = useChatActions()
+  const endDrag = useCallback(() => {
+    setDragId(null)
+    setDrop(null)
+  }, [])
+  const dropHere = () => {
+    if (dragId && drop) {
+      if (drop.section === 'recents') {
+        placeConversation(dragId, null)
+      } else {
+        // the list still contains the dragged item: moving it down shifts the target by one
+        const from = pinned.findIndex((c) => c.id === dragId)
+        placeConversation(dragId, from !== -1 && from < drop.index ? drop.index - 1 : drop.index)
+      }
+    }
+    endDrag()
+  }
 
   const go = (to: string) => {
     navigate(to)
@@ -54,6 +76,7 @@ export function AppSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = 
   const visible = q ? chat.conversations.filter((c) => c.title.toLowerCase().includes(q)) : chat.conversations
   const pinned = visible.filter((c) => c.pinned)
   const recents = visible.filter((c) => !c.pinned)
+  const dnd = { dragId, dragPinned: pinned.some((c) => c.id === dragId), drop, setDragId, setDrop, dropHere, endDrag }
 
   if (collapsed && !mobile) {
     // Icon rail, like Claude's collapsed sidebar
@@ -169,8 +192,12 @@ export function AppSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = 
             {q ? 'No conversation matches your search.' : 'Your conversations will appear here.'}
           </p>
         )}
-        {pinned.length > 0 && <Section title="Pinned" items={pinned} onNavigate={onNavigate} mobile={mobile} />}
-        {recents.length > 0 && <Section title="Recents" items={recents} onNavigate={onNavigate} mobile={mobile} />}
+        {(pinned.length > 0 || (dragId && !q)) && (
+          <Section kind="pinned" title="Pinned" items={pinned} onNavigate={onNavigate} mobile={mobile} dnd={dnd} />
+        )}
+        {recents.length > 0 && (
+          <Section kind="recents" title="Recents" items={recents} onNavigate={onNavigate} mobile={mobile} dnd={dnd} />
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border p-3">
@@ -187,20 +214,103 @@ export function AppSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = 
   )
 }
 
-function Section({ title, items, onNavigate, mobile }: { title: string; items: Conversation[]; onNavigate?: () => void; mobile: boolean }) {
+type SectionKind = 'pinned' | 'recents'
+
+interface Dnd {
+  dragId: string | null
+  /** the dragged conversation is pinned (so dropping it on Recents unpins it) */
+  dragPinned: boolean
+  drop: { section: SectionKind; index: number } | null
+  setDragId: (id: string | null) => void
+  setDrop: (drop: { section: SectionKind; index: number } | null) => void
+  dropHere: () => void
+  endDrag: () => void
+}
+
+function Section({
+  kind,
+  title,
+  items,
+  onNavigate,
+  mobile,
+  dnd,
+}: {
+  kind: SectionKind
+  title: string
+  items: Conversation[]
+  onNavigate?: () => void
+  mobile: boolean
+  dnd: Dnd
+}) {
   const activeId = useChatContext().conversationId
+  const target = dnd.drop?.section === kind ? dnd.drop.index : null
+
+  // where would the dragged conversation land? (above or below the hovered item)
+  const onDragOver = (e: DragEvent<HTMLElement>) => {
+    if (!dnd.dragId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const li = (e.target as HTMLElement).closest<HTMLElement>('li[data-id]')
+    let index = items.length
+    if (li) {
+      const i = items.findIndex((c) => c.id === li.dataset.id)
+      const box = li.getBoundingClientRect()
+      index = e.clientY < box.top + box.height / 2 ? i : i + 1
+    }
+    if (dnd.drop?.section !== kind || dnd.drop.index !== index) dnd.setDrop({ section: kind, index })
+  }
+
+  // Recents is a drop target only for a pinned conversation (dropping there unpins it)
+  const highlightRecents = kind === 'recents' && target !== null && dnd.dragPinned
+
   return (
-    <section className="mb-4" aria-labelledby={`section-${title}`}>
+    <section
+      className={`mb-4 rounded-lg transition-colors duration-150 ${highlightRecents ? 'bg-primary/5 ring-1 ring-primary/40' : ''}`}
+      aria-labelledby={`section-${title}`}
+      onDragOver={onDragOver}
+      onDrop={(e) => {
+        e.preventDefault()
+        dnd.dropHere()
+      }}
+    >
       <h2 id={`section-${title}`} className="px-2 pb-1 text-xs font-medium text-muted-foreground">
         {title}
       </h2>
-      <ul className="space-y-0.5">
-        {items.map((c) => (
-          <ConversationItem key={c.id} conversation={c} onNavigate={onNavigate} mobile={mobile} active={c.id === activeId} />
-        ))}
-      </ul>
+      {kind === 'pinned' && items.length === 0 ? (
+        <p
+          className={`mx-2 rounded-lg border border-dashed px-3 py-3 text-center text-xs transition-colors duration-150 ${
+            target !== null ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'
+          }`}
+        >
+          Drop here to pin
+        </p>
+      ) : (
+        <ul className="space-y-0.5">
+          {items.map((c, i) => (
+            <Fragment key={c.id}>
+              {kind === 'pinned' && target === i && <DropLine />}
+              <ConversationItem
+                conversation={c}
+                onNavigate={onNavigate}
+                mobile={mobile}
+                active={c.id === activeId}
+                dragging={c.id === dnd.dragId}
+                onDragStart={dnd.setDragId}
+                onDragEnd={dnd.endDrag}
+                position={kind === 'pinned' ? { index: i, count: items.length } : undefined}
+              />
+            </Fragment>
+          ))}
+          {kind === 'pinned' && target === items.length && <DropLine />}
+        </ul>
+      )}
     </section>
   )
+}
+
+/** Where a dragged conversation will be inserted. */
+function DropLine() {
+  return <li aria-hidden="true" className="mx-2 h-0.5 rounded-full bg-primary" />
 }
 
 // Memoized with stable actions: the list does not re-render for every streamed word.
@@ -209,17 +319,38 @@ const ConversationItem = memo(function ConversationItem({
   onNavigate,
   mobile,
   active,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  position,
 }: {
   conversation: Conversation
   onNavigate?: () => void
   mobile: boolean
   active: boolean
+  dragging: boolean
+  onDragStart: (id: string) => void
+  onDragEnd: () => void
+  /** only for pinned conversations: enables Move up / Move down */
+  position?: { index: number; count: number }
 }) {
-  const { togglePin, askRename, askDelete } = useChatActions()
+  const { togglePin, movePinned, askRename, askDelete } = useChatActions()
   const navigate = useNavigate()
 
   return (
-    <li className="group relative">
+    <li
+      className={`group relative transition-opacity duration-150 ${dragging ? 'opacity-40' : ''}`}
+      data-id={c.id}
+      // drag a conversation to Pinned (pin / reorder) or to Recents (unpin); mouse only,
+      // the "…" menu offers the same moves for keyboard and touch
+      draggable={!mobile}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', c.id)
+        onDragStart(c.id)
+      }}
+      onDragEnd={onDragEnd}
+    >
       <button
         type="button"
         onClick={() => {
@@ -248,6 +379,12 @@ const ConversationItem = memo(function ConversationItem({
               icon: c.pinned ? <PinOff /> : <Pin />,
               onSelect: () => togglePin(c.id),
             },
+            ...(position && position.index > 0
+              ? [{ label: 'Move up', icon: <ArrowUp />, onSelect: () => movePinned(c.id, -1) }]
+              : []),
+            ...(position && position.index < position.count - 1
+              ? [{ label: 'Move down', icon: <ArrowDown />, onSelect: () => movePinned(c.id, 1) }]
+              : []),
             { label: 'Rename', icon: <Pencil />, onSelect: () => askRename(c) },
             { label: 'Delete', icon: <Trash2 />, onSelect: () => askDelete(c), danger: true },
           ]}

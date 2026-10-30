@@ -24,7 +24,12 @@ def create_conversation(db: Session) -> Conversation:
 def list_conversations(db: Session, limit: int = 100) -> list[Conversation]:
     stmt = (
         select(Conversation)
-        .order_by(Conversation.pinned.desc(), Conversation.updated_at.desc(), Conversation.created_at.desc())
+        .order_by(
+            Conversation.pinned.desc(),
+            Conversation.pin_order.asc(),  # pinned: the order chosen by drag and drop
+            Conversation.updated_at.desc(),  # recents: latest activity first
+            Conversation.created_at.desc(),
+        )
         .limit(limit)
     )
     return list(db.scalars(stmt))
@@ -43,11 +48,34 @@ def update_conversation(
     conv = get_conversation(db, conversation_id)
     if title is not None:
         conv.title = title
-    if pinned is not None:
+    if pinned is not None and pinned != conv.pinned:
         conv.pinned = pinned
+        # a newly pinned conversation goes to the end of the pinned list
+        conv.pin_order = (db.scalar(select(func.max(Conversation.pin_order))) or 0) + 1 if pinned else None
     db.commit()
     db.refresh(conv)
     return conv
+
+
+def reorder_pinned(db: Session, ids: list[str]) -> list[Conversation]:
+    """Give the pinned conversations the order of `ids` (pinned ones not listed keep their place after)."""
+    convs = {c.id: c for c in db.scalars(select(Conversation).where(Conversation.id.in_(ids)))}
+    missing = [i for i in ids if i not in convs]
+    if missing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+    if any(not convs[i].pinned for i in ids):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only pinned conversations can be reordered")
+    for position, conversation_id in enumerate(ids):
+        convs[conversation_id].pin_order = position
+    others = db.scalars(
+        select(Conversation)
+        .where(Conversation.pinned.is_(True), Conversation.id.not_in(ids))
+        .order_by(Conversation.pin_order.asc())
+    )
+    for offset, conv in enumerate(others, start=len(ids)):
+        conv.pin_order = offset
+    db.commit()
+    return list_conversations(db)
 
 
 def delete_conversation(db: Session, conversation_id: str) -> None:

@@ -35,6 +35,7 @@ class ConversationOut(BaseModel):
     title: str
     model: str
     pinned: bool
+    pin_order: int | None = None
     created_at: UtcDatetime
     updated_at: UtcDatetime
 
@@ -65,6 +66,19 @@ class ConversationUpdate(BaseModel):
         if self.title is None and self.pinned is None:
             raise ValueError("Send a title and/or pinned")
         return self
+
+
+class PinnedOrder(BaseModel):
+    """New order of the pinned conversations, first to last."""
+
+    ids: list[str] = Field(min_length=1, max_length=500)
+
+    @field_validator("ids")
+    @classmethod
+    def unique(cls, v: list[str]) -> list[str]:
+        if len(set(v)) != len(v):
+            raise ValueError("Each conversation can appear only once")
+        return v
 
 
 class MessageIn(BaseModel):

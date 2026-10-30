@@ -13,7 +13,15 @@ from app import database
 from app.database import get_db
 from app.models import Role
 from app.rate_limit import chat_rate_limit, daily_token_budget
-from app.schemas import ChatReply, ConversationDetail, ConversationOut, ConversationUpdate, MessageIn, MessageOut
+from app.schemas import (
+    ChatReply,
+    ConversationDetail,
+    ConversationOut,
+    ConversationUpdate,
+    MessageIn,
+    MessageOut,
+    PinnedOrder,
+)
 from app.services import conversation_service as svc
 from app.prompts import TITLE_PROMPT
 from app.services.openai_service import AIServiceError, OpenAIService, get_ai_service
@@ -30,6 +38,15 @@ def create_conversation(db: Session = Depends(get_db)):
 @router.get("", response_model=list[ConversationOut], summary="List conversations (most recent first)")
 def list_conversations(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
     return svc.list_conversations(db, limit)
+
+
+@router.put(
+    "/pinned-order",
+    response_model=list[ConversationOut],
+    summary="Reorder the pinned conversations (sidebar drag and drop)",
+)
+def reorder_pinned(body: PinnedOrder, db: Session = Depends(get_db)):
+    return svc.reorder_pinned(db, body.ids)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail, summary="Get a conversation with all its messages")

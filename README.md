@@ -34,11 +34,11 @@ React SPA → Python FastAPI REST API → MySQL, with OpenAI called **only from 
 - **Regenerate** the last answer (after a Stop, a cut connection, or just to get another version); the old answer is replaced only once the new one exists.
 - **Markdown** rendering: tables, lists, **syntax-highlighted code** with a copy button.
 - **Hebrew / English / French**: every message sets its own direction automatically (`dir="auto"`), the model answers in the user's language.
-- **Claude-style sidebar**: collapsible, **pinned** and recent conversations, search, per-conversation menu (pin, rename, delete), AI-generated titles, a URL per conversation (`/chat/<id>`).
+- **Claude-style sidebar**: collapsible, **pinned** and recent conversations (**drag and drop** with the mouse to pin, reorder or unpin; *Move up / Move down* in the menu for keyboard and touch), search, per-conversation menu (pin, rename, delete), AI-generated titles, a URL per conversation (`/chat/<id>`).
 - Clear **error handling**: missing or invalid key, quota, network: friendly message + **Retry**; a failed message is rolled back so the database never holds unanswered messages.
 - **Spending guards**: 20 messages per minute per client, a daily token budget (`DAILY_TOKEN_BUDGET`) read from a usage log that deleting or regenerating cannot reset, 8000-character messages, context capped at 40 messages and 48 000 characters.
 - **Light / dark theme**, responsive 375 → 1440 px, accessible (WCAG 2.1 AA contrast, full keyboard use, focus kept in dialogs and the mobile drawer, screen-reader labels, `lang="he"` on Hebrew text, `prefers-reduced-motion`).
-- **51 automated tests**: 42 server tests (pytest, fake OpenAI client: no network, no cost) for context, streaming contract (Stop before / during an answer), regenerate, pinning, validation, limits, security; and 9 browser-side tests (Vitest) for the streaming reader.
+- **53 automated tests**: 44 server tests (pytest, fake OpenAI client: no network, no cost) for context, streaming contract (Stop before / during an answer), regenerate, pinning, validation, limits, security; and 9 browser-side tests (Vitest) for the streaming reader.
 - **Postman collection** (13 requests with test scripts, including the SSE stream) and interactive Swagger docs at `/docs`.
 - **Audited** before delivery by 7 specialised review agents (brief compliance, senior code review, real users, security, design and accessibility, the course grader, QA), round after round until all of them validated the project.
 
@@ -67,9 +67,9 @@ id          CHAR(36)  PK  ◀────┐      id               BIGINT PK AUT
 title       VARCHAR(120)       └───── conversation_id  CHAR(36) FK (ON DELETE CASCADE)
 model       VARCHAR(64)               role             ENUM('user','assistant')
 pinned      BOOLEAN                   content          MEDIUMTEXT
-created_at  DATETIME(3)               tokens           INT NULL
-updated_at  DATETIME(3)               interrupted      BOOLEAN (stopped by the user)
-                                      created_at       DATETIME(3)
+pin_order   INT NULL (sidebar order)  tokens           INT NULL
+created_at  DATETIME(3)               interrupted      BOOLEAN (stopped by the user)
+updated_at  DATETIME(3)               created_at       DATETIME(3)
 ```
 
 A third table, **`usage_log`**, records the tokens of every OpenAI call (answer, regeneration, title, stopped answer). It is not linked to conversations on purpose: deleting a conversation must not reset the daily budget.
@@ -90,6 +90,7 @@ SELECT * FROM chatgpt_clone.v_conversation_messages;
 | GET | `/api/conversations?limit=100` | List conversations: pinned first, then most recent activity (max 500) |
 | GET | `/api/conversations/{id}` | One conversation with all its messages |
 | PATCH | `/api/conversations/{id}` | Rename and/or pin (`{"title": "...", "pinned": true}`) |
+| PUT | `/api/conversations/pinned-order` | Reorder the pinned conversations (`{"ids": [...]}`, first to last) |
 | DELETE | `/api/conversations/{id}` | Delete (messages are deleted in cascade) |
 | POST | `/api/conversations/{id}/messages` | Send a message, get the full answer (JSON) |
 | POST | `/api/conversations/{id}/messages/stream` | Send a message, stream the answer (SSE: `user_message`, `delta`, `done`, `title`, `error`) |
@@ -196,7 +197,8 @@ The server is covered by pytest; these user flows are checked by hand before eac
 4. While an answer is streaming (or right after pressing Enter on a new chat), open another conversation: the URL, title and messages are those of the new one.
 5. Browser **Back** / **Forward** between `/` and conversations: the screen always matches the URL.
 6. Delete the open conversation, open `/chat/unknown-id`: you land on a new chat ("Conversation not found." for the bad link).
-7. Mobile width: open the menu, a conversation's "…" menu, Rename, then Escape: only the dialog closes and focus goes back to the "…" button.
+7. Drag a recent conversation into Pinned (a blue line shows where it lands), reorder it, drag it back to Recents.
+8. Mobile width: open the menu, a conversation's "…" menu, Rename, then Escape: only the dialog closes and focus goes back to the "…" button.
 
 ---
 

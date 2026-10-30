@@ -15,6 +15,8 @@ const ChatContext = createContext<ContextValue | null>(null)
 // Actions that do not change while an answer streams, for memoized list items.
 interface Actions {
   togglePin: (id: string) => void
+  placeConversation: (id: string, index: number | null) => void
+  movePinned: (id: string, delta: -1 | 1) => void
   askRename: (c: Conversation) => void
   askDelete: (c: Conversation) => void
 }
@@ -26,8 +28,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [deleting, setDeleting] = useState<Conversation | null>(null)
 
   const value: ContextValue = { ...chat, askRename: setRenaming, askDelete: setDeleting }
-  const { togglePin } = chat
-  const actions = useMemo<Actions>(() => ({ togglePin, askRename: setRenaming, askDelete: setDeleting }), [togglePin])
+  const { togglePin, placeConversation, movePinned } = chat
+  const actions = useMemo<Actions>(
+    () => ({
+      togglePin,
+      placeConversation: (id, index) => void placeConversation(id, index),
+      movePinned,
+      askRename: setRenaming,
+      askDelete: setDeleting,
+    }),
+    [togglePin, placeConversation, movePinned],
+  )
 
   return (
     <ChatContext.Provider value={value}>

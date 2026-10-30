@@ -16,6 +16,8 @@ export interface Conversation {
   title: string
   model: string
   pinned: boolean
+  /** position among pinned conversations (null when not pinned) */
+  pin_order?: number | null
   created_at: string
   updated_at: string
 }
@@ -67,6 +69,8 @@ export const api = {
   getConversation: (id: string) => request<ConversationDetail>(`/api/conversations/${id}`),
   updateConversation: (id: string, changes: { title?: string; pinned?: boolean }) =>
     request<Conversation>(`/api/conversations/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
+  reorderPinned: (ids: string[]) =>
+    request<Conversation[]>('/api/conversations/pinned-order', { method: 'PUT', body: JSON.stringify({ ids }) }),
   deleteConversation: (id: string) => request<void>(`/api/conversations/${id}`, { method: 'DELETE' }),
 }
 

@@ -291,6 +291,52 @@ export function useChat() {
     [conversations, updateConversation],
   )
 
+  /**
+   * Drag and drop in the sidebar: put a conversation among the pinned ones at `index`
+   * (pinning it if needed), or back in Recents (`index` null = unpin).
+   */
+  const placeConversation = useCallback(
+    async (id: string, index: number | null) => {
+      const conv = conversations.find((c) => c.id === id)
+      if (!conv) return
+      if (index === null) {
+        if (conv.pinned) await updateConversation(id, { pinned: false })
+        return
+      }
+      const pinnedIds = conversations.filter((c) => c.pinned && c.id !== id).map((c) => c.id)
+      pinnedIds.splice(Math.max(0, Math.min(index, pinnedIds.length)), 0, id)
+      // optimistic: the list moves at once, the server confirms
+      setConversations((list) =>
+        sortConversations(
+          list.map((c) => {
+            const pos = pinnedIds.indexOf(c.id)
+            return pos === -1 ? c : { ...c, pinned: true, pin_order: pos }
+          }),
+        ),
+      )
+      try {
+        if (!conv.pinned) await api.updateConversation(id, { pinned: true })
+        setConversations(await api.reorderPinned(pinnedIds))
+      } catch (e) {
+        setError({ text: (e as Error).message })
+        void refreshHistory()
+      }
+    },
+    [conversations, updateConversation, refreshHistory],
+  )
+
+  /** Keyboard / touch alternative to drag and drop: move a pinned conversation up or down. */
+  const movePinned = useCallback(
+    (id: string, delta: -1 | 1) => {
+      const pinned = conversations.filter((c) => c.pinned)
+      const from = pinned.findIndex((c) => c.id === id)
+      const to = from + delta
+      if (from === -1 || to < 0 || to >= pinned.length) return
+      void placeConversation(id, to)
+    },
+    [conversations, placeConversation],
+  )
+
   const deleteConversation = useCallback(
     async (id: string) => {
       try {
@@ -322,6 +368,8 @@ export function useChat() {
     loadingConversation,
     renameConversation,
     togglePin,
+    placeConversation,
+    movePinned,
     deleteConversation,
   }
 }
@@ -359,9 +407,12 @@ const pendingDraft = {
 /** A given-back text fills the input once; afterwards the input starts empty again. */
 const consumeDraft = (d: { text: string; n: number } | null) => (d && d.text ? { text: '', n: d.n } : d)
 
-/** Pinned first, then most recent activity (same order as the API). */
+/** Pinned first in their chosen order, then most recent activity (same order as the API). */
 function sortConversations(list: Conversation[]): Conversation[] {
   return [...list].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at),
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) ||
+      (a.pinned ? (a.pin_order ?? 0) - (b.pin_order ?? 0) : 0) ||
+      b.updated_at.localeCompare(a.updated_at),
   )
 }

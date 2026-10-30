@@ -37,7 +37,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
 # only answer to known host names (protects a local API against DNS rebinding)

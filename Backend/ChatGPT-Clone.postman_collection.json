@@ -397,6 +397,51 @@
           ]
         },
         {
+          "name": "Reorder pinned conversations",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Drag and drop in the sidebar: the pinned conversations in their new order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{conversationId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/pinned-order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "pinned-order"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('first pinned', () => pm.expect(pm.response.json().filter(c => c.pinned)[0].id).to.eql(pm.collectionVariables.get('conversationId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Validation error (empty message)",
           "request": {
             "method": "POST",
