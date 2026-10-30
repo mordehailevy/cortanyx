@@ -7,7 +7,3 @@ pydantic==2.14.1
 pydantic-settings==2.16.2
 openai==3.41.0
 python-dotenv==1.2.4
-
-# tests
-pytest==9.2.0
-httpx==0.28.1

@@ -1,0 +1,69 @@
+# Audit audit-dev-senior — tour 1
+Note : 8/10 — NON VALIDÉ
+
+Il reste **un défaut MAJEUR**, introduit par les corrections du tour 0 : un conflit de calendrier entre l'annulation d'un premier message et l'ouverture d'une autre conversation. Tous les autres constats du tour 0 sont corrigés ou acceptés. Il n'y a plus de BLOQUANT.
+
+Méthode : j'ai relu tout le code modifié côté serveur (`routers/conversations.py`, `services/*`, `rate_limit.py`, `security.py`, `main.py`, `models.py`, `config.py`) et côté navigateur (`ChatPage.tsx`, `useChat.ts`, `api.ts`, `ChatContext.tsx`, `LazyMarkdown.tsx`, `Markdown.tsx`, `MessageBubble.tsx`), ainsi que l'export SQL et le README. J'ai relancé pytest, tsc, lint et build (build écrit dans le scratchpad, supprimé ensuite). J'ai refait 4 scénarios dans mon propre onglet, fermé à la fin. **2 messages réels** ont été envoyés au chat.
+
+## Ce qui est excellent (3 à 6 puces, avec preuves)
+- **Le contrat SSE est maintenant solide et documenté.** Tout passe par une seule fonction, `_answer_stream`, partagée par l'envoi et la régénération (`conversations.py:100-171`). Chaque cas est traité : arrêt avant le premier mot (le message utilisateur est supprimé, `:155-156`), arrêt en cours de réponse (texte partiel gardé et titre de secours, `:152-154`), `saved=True` posé avant l'insertion (`:141`), titre isolé qui ne fait que journaliser (`:50-61`). Côté navigateur : flux sans `done` → erreur (`api.ts:147`), `error` reçu après `done` → ignoré (`:143`), `\r\n` et lignes `data:` multiples gérés (`:109-123`).
+- **La navigation est réparée, vérifiée en vrai :**
+  - Retour vers `/` → écran vide. Suivant → la conversation revient.
+  - Suppression de la conversation ouverte → adresse `/` et écran vide.
+  - Clic sur « SQL vs NoSQL » pendant une réponse → adresse, titre de l'onglet et contenu sont ceux de SQL. La réponse partielle est enregistrée dans la conversation d'origine (message 128, 240 caractères), avec le titre de secours « Audit T3: list the numbers 1 to 80, one per line. ». La conversation SQL reste intacte (messages 33-36).
+- **Les tests progressent nettement : `32 passed in 0.75s`.** Les cas importants sont couverts : `test_stop_before_first_word_leaves_no_unanswered_message`, `test_stop_mid_answer_keeps_partial_answer_and_titles_it`, `test_title_error_after_done_is_not_sent_as_error`, `test_delete_cascades_messages` (avec `PRAGMA foreign_keys`), `test_context_window_is_capped`, `test_openai_errors_are_translated`, `test_regenerate_*`.
+- **La base de données est cohérente.** L'export a été régénéré avec `pinned`, sans `ON UPDATE`, avec l'index `idx_conversations_list` (`chatgpt_clone.sql:33-41`). L'ORM est aligné sur le schéma : `DATETIME(fsp=3)` et `BIGINT UNSIGNED` en variante MySQL (`models.py:14-15`). La fenêtre de contexte est limitée directement en SQL (`conversation_service.py:85-91`). Dans `delete_message`, l'annulation d'un message restaure aussi la date d'activité (`:71-82`).
+- **Les vérifications passent :** `tsc -b` code 0, oxlint code 0. Le build produit un bundle principal de **440,84 kB** (gzip 141,13), sous le seuil de 500 kB, plus About en lazy (8,29 kB) et Markdown en lazy (330,48 kB).
+
+## Constats
+| # | Gravité | Constat | Preuve | Correction proposée (précise, applicable) |
+|---|---------|---------|--------|-------------------------------------------|
+| 1 | MAJEUR | **Régression : conflit entre l'annulation d'un 1er message et l'ouverture d'une autre conversation.** Scénario : dans une nouvelle conversation, on envoie un 1er message, puis on clique sur une autre conversation B avant le premier mot. `openConversation(B)` interrompt le flux. Le `catch` de `send` voit « interrompu sans texte » et « conversation créée ici », supprime la conversation, puis appelle `setConversationId(null)` **après** que B a été chargée. L'effet état → adresse renvoie alors vers `/`. Résultat : l'adresse est `/`, l'onglet s'intitule « New chat », mais les messages de B restent affichés, et `conversationId` vaut null. Le prochain message crée donc une nouvelle conversation tout en s'affichant sous les messages de B (cette dernière étape est déduite du code, pas testée, pour économiser un appel OpenAI). | Reproduit dans mon onglet, test T4. Envoi de « Audit T4: say hi. », puis clic sur SQL dès que l'adresse est passée à `/chat/1c22e037…` (bulle encore vide, 14 caractères = « Cortanyx said: »). Adresse relevée toutes les 250 ms pendant 3 s : `/` à chaque fois. Contenu affiché : « You said: What is the difference between… ». Aucun message d'erreur. Code : `useChat.ts:108-116`, `ChatPage.tsx:44-46` | Ne vider l'état que s'il appartient encore à cette conversation : `setConversationId((cur) => (cur === cid ? null : cur))` dans `useChat.ts:115`. Plus robuste : une ref `activeRef.current = cid` mise à jour dans `openConversation` et `newChat`, et dans le `catch`, `if (activeRef.current !== cid) return` avant tout `setMessages` ou `setConversationId`. Test Playwright à ajouter : « envoyer, cliquer sur B en moins de 100 ms → l'adresse doit être `/chat/B` ». |
+| 2 | MINEUR | **Un lien invalide ouvert depuis une conversation affichée perd son message d'erreur.** `openConversation` affiche « Conversation not found. », puis `navigate('/')`. L'effet `!id` appelle alors `newChat()`, qui exécute `setError(null)` : on arrive sur un écran vide sans explication. | `useChat.ts:191`, `ChatPage.tsx:24-26,30`, `useChat.ts:177` | Dans le cas `!id`, appeler une variante qui ne touche pas à l'erreur, par exemple `newChat({ keepError: true })`. Ou afficher l'erreur après la navigation, via `navigate('/', { replace: true, state: { notFound: true } })`. |
+| 3 | MINEUR | **Un Stop avant le 1er mot dans une nouvelle conversation fait disparaître le texte tapé, sans rien dire.** La conversation est supprimée, la bulle aussi, et le texte n'est ni remis dans la zone de saisie ni signalé. | `useChat.ts:105-116` (`if (!isAbort(e)) setError…`) | Remettre le texte dans la zone de saisie (exposer `draft` depuis `useChat`), ou afficher une note discrète « Stopped before any answer » avec Retry. |
+| 4 | MINEUR | **Le chunk Markdown pèse encore 330,48 kB (gzip 102,51).** `rehype-highlight` embarque toujours `lowlight/common` (37 langages) : le total de JS reste d'environ 780 kB. Le lazy est bien fait, mais la 1re réponse attend 100 kB gzip de plus. | Sortie du build : `assets/Markdown-TnIukfIr.js 330.48 kB`. `Markdown.tsx:37` (pas d'option `languages`) | `rehypeHighlight` avec `{ languages: { python, javascript, typescript, bash, sql, json, xml, css }, detect: false }`, chaque langage importé depuis `highlight.js/lib/languages/<nom>`. Cible : environ 150 kB. |
+| 5 | MINEUR | **La limite de 413 se contourne avec un corps de requête découpé (`Transfer-Encoding: chunked`).** Le middleware ne lit que `content-length`. Un corps de 100 000 caractères envoyé en chunked est lu en entier, puis rejeté avec un 422 par Pydantic. Un corps de plusieurs centaines de Mo serait chargé en mémoire. | `curl … -H 'Transfer-Encoding: chunked'` avec 100 kB → `422` (et non `413`). `security.py:25-31` | Envelopper `receive` : additionner `len(message["body"])` et répondre 413 dès que `max_body_bytes` est dépassé. |
+| 6 | MINEUR | **Le budget journalier fait une somme sur toute la table `messages` à chaque message, sans index sur `created_at`.** Et supprimer des conversations « rend » le budget, puisque les jetons supprimés ne comptent plus. | `conversation_service.py:145-147`, `rate_limit.py:43-50`, `schema.sql:43-44` (pas d'index `created_at`) | `KEY idx_messages_created (created_at)`, ou bien une table `usage_log(day, tokens)` incrémentée dans `save_answer` et jamais supprimée en cascade. |
+| 7 | MINEUR | **Si la base tombe pendant `save_answer`, le flux se termine sans `done` ni `error`.** `saved=True` est déjà posé, donc le `except Exception` n'émet rien et ne supprime pas le message utilisateur. Le navigateur affiche « connection interrupted » et retire la bulle, alors que la base garde le message utilisateur. Le cas est rare. | `conversations.py:141-145`, `:158-163` | Utiliser deux drapeaux : `inserting = True` avant l'insertion (pour l'annulation) et `saved = True` après. Dans le `except Exception`, faire `session.rollback()`, supprimer `user_msg` si `not saved`, puis émettre `error`. |
+| 8 | MINEUR | **Aucun test côté navigateur.** Le parseur SSE durci (`api.ts:103-147`) et la logique de navigation (constat 1) ne sont protégés par aucun test, alors que c'est là que se trouvaient les bugs des tours 0 et 1. | `package.json` : aucun script de test, aucun fichier `*.test.ts` | Vitest pour `readStream` (bloc coupé entre deux fragments, `\r\n`, `data:` sans espace, flux sans `done`, `error` après `done`). Un test Playwright pour les scénarios Retour, changement de conversation pendant le flux, et suppression. |
+| 9 | IDÉE | **Dates naïves et fuseaux mélangés,** constat 18 du tour 0, non traité : `datetime.now()` côté Python et `NOW()` côté MySQL, renvoyées sans fuseau. `tokens_last_24h` utilise aussi `datetime.now()` alors que `created_at` vient de MySQL. | `conversation_service.py:65,146`, `models.py:30-32,52` | UTC partout (`datetime.now(timezone.utc)` et `SET time_zone='+00:00'` à la connexion), ou `func.now()` côté serveur pour `updated_at`. |
+
+### Conversations de test (toutes supprimées)
+- `5e062301-d6c8-4914-88cc-7bfe18ecd116` : conversation vide créée par l'API, supprimée par le menu de l'interface (test T2).
+- `36d84818-d034-4c29-a016-1c4df6b33307` : 1 appel OpenAI (T3), supprimée par `DELETE`, réponse 204.
+- `1c22e037-b2c9-44fa-aede-978223ceda7b` : 1 appel OpenAI interrompu (T4), supprimée par l'application elle-même (GET → 404).
+- Les conversations protégées sont intactes, vérifié : `711d022f…` a toujours ses 4 messages (ids 33-36).
+
+### Sorties des commandes
+- `env/bin/python -m pytest -q` : `32 passed in 0.75s`.
+- `npx tsc -b` : code 0 ; `npm run lint` (oxlint) : code 0.
+- `vite build` : `index.css 51.63 kB`, `AboutPage 8.29 kB`, `Markdown 330.48 kB (gzip 102.51)`, `index 440.84 kB (gzip 141.13)`. Plus d'avertissement « > 500 kB ».
+
+## Vérification des corrections du tour précédent
+| # du tour précédent | Corrigé ? | Preuve |
+|---|---|---|
+| 1 (export SQL sans `pinned`) | Oui | `chatgpt_clone.sql:33-41` : `pinned tinyint(1) NOT NULL DEFAULT '0'`, plus de `ON UPDATE`, `KEY idx_conversations_list (pinned, updated_at)`, vue présente (`:90-112`). |
+| 2 (clic sur une autre conversation pendant le flux) | Oui, mais régression proche (constat 1) | T3 : l'adresse, le titre et le contenu sont ceux de SQL, la réponse partielle est enregistrée (message 128). Le cas « avant le 1er mot » dans une nouvelle conversation casse encore (constat 1). |
+| 3 (Retour vers `/`) | Oui | T1 : après Retour, `/ \| EMPTY STATE` ; après Suivant, `/chat/711d… \| You said: What is the difference…`. `ChatPage.tsx:23-34`. |
+| 4 (adresse figée après suppression) | Oui pour la suppression | T2 : suppression de la conversation ouverte → `/ \| EMPTY STATE`. `ChatPage.tsx:38-48`. Le chemin « 1er message en échec » est concerné par le constat 1. |
+| 5 (re-rendus du contexte) | Partiellement, accepté | `MessageBubble` mémoïsé (`MessageBubble.tsx:28`), `onRegenerate` n'est passé à aucune bulle pendant le flux (`ChatPage.tsx:156`). Le contexte n'est pas éclaté : choix documenté, non pénalisé. |
+| 6 (bundle de 775 kB) | Oui pour le bundle principal | Bundle principal 440,84 kB, About et Markdown en lazy, `detect: false`. Reste le constat 4 (langages de highlight). |
+| 7 (flux sans `done`) | Oui | `api.ts:147` |
+| 8 (erreur après `done`) | Oui | `conversations.py:50-61`, `api.ts:142-143`, `test_title_error_after_done_is_not_sent_as_error` |
+| 9 (Stop avant le 1er mot / doublon) | Oui | `conversations.py:141,149-157`, `useChat.ts:105-110`, tests aux lignes 176 et 182 |
+| 10 (README faux) | Oui | `README.md:24` (adresse propre à chaque conversation), `README.md:41` (« 32 automated tests ») |
+| 11 (ORM et schéma divergents) | Oui | `models.py:14-15,30-32,45,52` |
+| 12 (client OpenAI par requête) | Oui | `openai_service.py:99-102` (`@lru_cache`) |
+| 13 (historique chargé en entier) | Oui | `conversation_service.py:85-91`, `test_context_window_is_capped` |
+| 14 (liste limitée à 50) | Oui (limite documentée) | `conversations.py:30` (`limit` entre 1 et 500, 100 par défaut), `README.md:88`. La recherche reste côté navigateur, ce qui est acceptable avec 100 conversations. |
+| 15 (parseur SSE fragile) | Oui | `api.ts:109-126` |
+| 16 (tests SQLite incomplets) | Oui côté serveur | `PRAGMA foreign_keys`, 32 tests, `test_delete_cascades_messages`. Côté navigateur : toujours aucun test (constat 8). |
+| 17 (limiteur et proxy) | Oui | Nettoyage `MAX_TRACKED_CLIENTS` (`rate_limit.py:26-29`), `--no-proxy-headers` documenté (`README.md:162-166`). |
+| 18 (dates naïves, IDÉE) | Non (IDÉE, non bloquant) | `conversation_service.py:65,146` inchangés |
+
+## Ce qu'il faudrait pour passer à 10
+- **Corriger le constat 1**, la seule chose qui sépare de la validation à 9 : dans les `catch` de `send` et `regenerate`, ne modifier l'état que si la conversation active est encore `cid` (`setConversationId(cur => cur === cid ? null : cur)` ou une ref de la conversation active). Ajouter un test Playwright pour ce scénario.
+- Constats 2 et 3 : garder le message « Conversation not found. » après la redirection, et rendre le texte tapé quand on arrête avant toute réponse.
+- Constat 4 : limiter highlight.js à environ 8 langages (le chunk Markdown passerait de 330 kB à environ 150 kB).
+- Constats 5, 6 et 7 : limite de taille sur le flux reçu (chunked), index ou table d'usage pour le budget, `rollback` et `error` si l'insertion de la réponse échoue.
+- Constat 8 : Vitest pour `readStream` et Playwright pour la navigation, puisque c'est la partie du code qui a régressé deux fois.

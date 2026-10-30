@@ -1,7 +1,11 @@
 import { motion, useReducedMotion } from 'framer-motion'
+import { RotateCcw } from 'lucide-react'
+import { memo } from 'react'
 import type { UiMessage } from '../hooks/useChat'
+import { langOf } from '../lib/text'
 import { LogoMark } from './Logo'
-import { CopyButton, Markdown } from './Markdown'
+import { CopyButton } from './CopyButton'
+import { LazyMarkdown } from './LazyMarkdown'
 
 function TypingDots() {
   return (
@@ -17,10 +21,22 @@ function TypingDots() {
   )
 }
 
-export function MessageBubble({ message }: { message: UiMessage }) {
+const actionBtn =
+  'inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-200 hover:bg-current/10 max-md:min-h-11 max-md:min-w-11 max-md:justify-center'
+
+/** Memoized: while an answer streams, only the streaming bubble re-renders. */
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  onRegenerate,
+}: {
+  message: UiMessage
+  /** only passed for the last answer, when nothing is streaming */
+  onRegenerate?: () => void
+}) {
   const reduce = useReducedMotion()
   const isUser = message.role === 'user'
   const waiting = message.streaming && !message.content
+  const lang = langOf(message.content)
 
   return (
     <motion.li
@@ -31,32 +47,49 @@ export function MessageBubble({ message }: { message: UiMessage }) {
     >
       {!isUser && <LogoMark className="mt-1 size-8" />}
 
-      <div className={`flex min-w-0 max-w-[85%] flex-col sm:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex min-w-0 flex-col ${isUser ? 'max-w-[85%] items-end sm:max-w-[75%]' : 'flex-1 items-start'}`}>
         <span className="sr-only">{isUser ? 'You said:' : 'Cortanyx said:'}</span>
         {isUser ? (
           <div
             dir="auto"
-            className="max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-ee-md bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-on-primary shadow-sm"
+            lang={lang}
+            className="max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-ee-md bg-muted px-4 py-2.5 text-[15px] leading-relaxed text-foreground"
           >
             {message.content}
           </div>
         ) : (
           <div
             dir="auto"
-            className={`prose prose-slate max-w-full break-words rounded-2xl rounded-es-md border border-border bg-surface px-4 py-2.5 text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-headings:mb-2 prose-headings:mt-4 prose-li:my-0.5 ${
+            lang={lang}
+            className={`prose prose-slate max-w-full break-words pt-0.5 text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-headings:mb-2 prose-headings:mt-4 prose-li:my-0.5 ${
               message.streaming && message.content ? 'streaming-caret' : ''
             }`}
           >
-            {waiting ? <TypingDots /> : <Markdown content={message.content} />}
+            {waiting ? <TypingDots /> : <LazyMarkdown content={message.content} />}
           </div>
         )}
 
         {!isUser && !message.streaming && message.content && (
-          <div className="mt-1 text-muted-foreground opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-            <CopyButton text={message.content} />
+          <div
+            className={`mt-1 flex items-center gap-1 text-muted-foreground transition-opacity duration-200 ${
+              onRegenerate ? '' : 'sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'
+            }`}
+          >
+            <CopyButton text={message.content} className={actionBtn} />
+            {onRegenerate && (
+              <button type="button" onClick={onRegenerate} className={actionBtn} aria-label="Regenerate this answer">
+                <RotateCcw className="size-3.5" aria-hidden="true" />
+                <span className="max-md:sr-only">Regenerate</span>
+              </button>
+            )}
+            {(message.stopped || message.interrupted) && (
+              <span role="status" className="ms-1 text-xs italic">
+                Stopped
+              </span>
+            )}
           </div>
         )}
       </div>
     </motion.li>
   )
-}
+})

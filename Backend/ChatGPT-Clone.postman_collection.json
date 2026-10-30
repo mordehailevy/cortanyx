@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "ChatGPT Clone API - Mordehai Levy",
+    "name": "Cortanyx API - Mordehai Levy",
     "description": "FastAPI + MySQL + OpenAI. Run the folders in order (Collection Runner). Interactive docs: {{baseUrl}}/docs",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -226,7 +226,57 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const t = pm.response.text();",
+                  "pm.test('200 + event-stream', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream'); });",
+                  "pm.test('event order: user_message, delta..., done', () => {",
+                  "  pm.expect(t).to.include('event: user_message');",
+                  "  pm.expect(t.indexOf('event: delta')).to.be.above(t.indexOf('event: user_message'));",
+                  "  pm.expect(t.indexOf('event: done')).to.be.above(t.lastIndexOf('event: delta'));",
+                  "  pm.expect(t).to.not.include('event: error');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Regenerate last answer (streaming SSE)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{conversationId}}/regenerate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{conversationId}}",
+                "regenerate"
+              ]
+            },
+            "description": "Replaces the last answer with a new one (same events, without user_message)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const t = pm.response.text();",
+                  "pm.test('new answer streamed', () => { pm.expect(t).to.include('event: delta'); pm.expect(t).to.include('event: done'); pm.expect(t).to.not.include('event: error'); });"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get conversation with messages",
@@ -297,6 +347,50 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('renamed', () => pm.expect(pm.response.json().title).to.eql('Learning React'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pin conversation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{conversationId}}"
+              ]
+            },
+            "description": "Pinned conversations are listed first. Pinning does not change the activity date.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pinned\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('pinned', () => pm.expect(pm.response.json().pinned).to.eql(true));"
                 ]
               }
             }
@@ -378,6 +472,125 @@
           ]
         },
         {
+          "name": "Regenerate unknown conversation (404)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "description": "No conversation with this id.",
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/does-not-exist/regenerate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "does-not-exist",
+                "regenerate"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create empty conversation (for 409)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('emptyConversationId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Regenerate with no question (409)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "description": "Nothing to regenerate in an empty conversation.",
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{emptyConversationId}}/regenerate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{emptyConversationId}}",
+                "regenerate"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete empty conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{emptyConversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{emptyConversationId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Delete conversation",
           "request": {
             "method": "DELETE",
@@ -417,6 +630,10 @@
     },
     {
       "key": "conversationId",
+      "value": ""
+    },
+    {
+      "key": "emptyConversationId",
       "value": ""
     }
   ]

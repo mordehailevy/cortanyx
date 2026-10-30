@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from app import database
 from app.database import get_db
 from app.models import Role
-from app.rate_limit import chat_rate_limit
-from app.schemas import ChatReply, ConversationDetail, ConversationOut, ConversationRename, MessageIn, MessageOut
+from app.rate_limit import chat_rate_limit, daily_token_budget
+from app.schemas import ChatReply, ConversationDetail, ConversationOut, ConversationUpdate, MessageIn, MessageOut
 from app.services import conversation_service as svc
 from app.services.openai_service import AIServiceError, OpenAIService, get_ai_service
 
@@ -27,8 +27,8 @@ def create_conversation(db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[ConversationOut], summary="List conversations (most recent first)")
-def list_conversations(db: Session = Depends(get_db)):
-    return svc.list_conversations(db)
+def list_conversations(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
+    return svc.list_conversations(db, limit)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail, summary="Get a conversation with all its messages")
@@ -36,9 +36,9 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
     return svc.get_conversation(db, conversation_id)
 
 
-@router.patch("/{conversation_id}", response_model=ConversationOut, summary="Rename a conversation")
-def rename_conversation(conversation_id: str, body: ConversationRename, db: Session = Depends(get_db)):
-    return svc.rename_conversation(db, conversation_id, body.title)
+@router.patch("/{conversation_id}", response_model=ConversationOut, summary="Rename and/or pin a conversation")
+def update_conversation(conversation_id: str, body: ConversationUpdate, db: Session = Depends(get_db)):
+    return svc.update_conversation(db, conversation_id, title=body.title, pinned=body.pinned)
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a conversation")
@@ -48,20 +48,23 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
 
 
 async def _maybe_title(ai: OpenAIService, db: Session, conversation_id: str, user: str, assistant: str) -> str | None:
-    """Generate a title after the first exchange only."""
-    conv = await run_in_threadpool(svc.get_conversation, db, conversation_id)
-    if conv.title != svc.DEFAULT_TITLE:
-        return None
-    title = await ai.make_title(user, assistant)
-    if title:
+    """Generate a title after the first exchange only. Never fails the chat: errors are only logged."""
+    try:
+        conv = await run_in_threadpool(svc.get_conversation, db, conversation_id)
+        if conv.title != svc.DEFAULT_TITLE:
+            return None
+        title = await ai.make_title(user, assistant) or svc.fallback_title(user)
         await run_in_threadpool(svc.set_title, db, conversation_id, title)
-    return title
+        return title
+    except Exception:
+        log.exception("Title generation failed")
+        return None
 
 
 @router.post(
     "/{conversation_id}/messages",
     response_model=ChatReply,
-    dependencies=[Depends(chat_rate_limit)],
+    dependencies=[Depends(chat_rate_limit), Depends(daily_token_budget)],
     summary="Send a message and get the full answer (JSON)",
 )
 async def send_message(
@@ -94,20 +97,15 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
 
 
-@router.post(
-    "/{conversation_id}/messages/stream",
-    dependencies=[Depends(chat_rate_limit)],
-    summary="Send a message and stream the answer word by word (Server-Sent Events)",
-    response_description="text/event-stream with events: user_message, delta, done, title, error",
-)
-async def stream_message(
-    conversation_id: str,
-    body: MessageIn,
-    db: Session = Depends(get_db),
-    ai: OpenAIService = Depends(get_ai_service),
-):
-    # Validate before opening the stream so a bad id is a normal 404.
-    await run_in_threadpool(svc.get_conversation, db, conversation_id)
+def _answer_stream(conversation_id: str, ai: OpenAIService, content: str | None) -> StreamingResponse:
+    """SSE answer for a new user message (content) or a regeneration (content=None).
+
+    Contract: the stream ends with exactly one `done` or one `error`, and the
+    database always matches what the user saw:
+    - stopped before the first word -> the user message is removed (nothing unanswered);
+    - stopped mid-answer -> the partial answer is kept (exact context for the next turn);
+    - regenerate -> the old answer is replaced only once a new one exists.
+    """
 
     async def events():
         # The generator outlives the request dependencies, so it owns its own session.
@@ -115,10 +113,19 @@ async def stream_message(
         parts: list[str] = []
         tokens: int | None = None
         saved = False
+        inserting = False
+        user_msg = None
+        replaced_id: int | None = None
+        user_text = content or ""
         try:
-            user_msg = await run_in_threadpool(svc.add_message, session, conversation_id, Role.user, body.content)
-            yield _sse("user_message", MessageOut.model_validate(user_msg).model_dump(mode="json"))
-            history = await run_in_threadpool(svc.history_for_model, session, conversation_id)
+            if content is not None:
+                user_msg = await run_in_threadpool(svc.add_message, session, conversation_id, Role.user, content)
+                yield _sse("user_message", MessageOut.model_validate(user_msg).model_dump(mode="json"))
+                history = await run_in_threadpool(svc.history_for_model, session, conversation_id)
+            else:
+                user_text, replaced_id, history = await run_in_threadpool(
+                    svc.prepare_regenerate, session, conversation_id
+                )
             try:
                 async for chunk in ai.stream_reply(history):
                     if chunk.delta:
@@ -127,28 +134,40 @@ async def stream_message(
                     if chunk.total_tokens:
                         tokens = chunk.total_tokens
             except AIServiceError as exc:
-                await run_in_threadpool(svc.delete_message, session, user_msg.id)
+                if user_msg is not None:
+                    await run_in_threadpool(svc.delete_message, session, user_msg.id)
                 yield _sse("error", {"detail": exc.message, "status": exc.status_code})
                 return
 
-            text = "".join(parts)
-            assistant_msg = await run_in_threadpool(
-                svc.add_message, session, conversation_id, Role.assistant, text, tokens
-            )
+            inserting = True  # from here a cancellation must not save the answer a second time
+            try:
+                assistant_msg = await run_in_threadpool(
+                    svc.save_answer, session, conversation_id, "".join(parts), tokens, replaced_id
+                )
+            except Exception:
+                inserting = False
+                session.rollback()
+                raise
             saved = True
             yield _sse("done", MessageOut.model_validate(assistant_msg).model_dump(mode="json"))
-            title = await _maybe_title(ai, session, conversation_id, body.content, text)
+            title = await _maybe_title(ai, session, conversation_id, user_text, "".join(parts))
             if title:
                 yield _sse("title", {"title": title})
         except asyncio.CancelledError:
-            # The user pressed "Stop" (client disconnected): keep what was generated
-            # so the next turn still has the exact context the user saw.
-            if parts and not saved:
-                svc.add_message(session, conversation_id, Role.assistant, "".join(parts), tokens)
+            # "Stop" pressed or page closed (client disconnected)
+            if not saved and not inserting:
+                if parts:
+                    svc.save_answer(session, conversation_id, "".join(parts), tokens, replaced_id, interrupted=True)
+                    svc.set_title_if_default(session, conversation_id, svc.fallback_title(user_text))
+                elif user_msg is not None:
+                    svc.delete_message(session, user_msg.id)
             raise
         except Exception:
             log.exception("Streaming failed")
-            yield _sse("error", {"detail": "Internal server error", "status": 500})
+            if not saved:
+                if user_msg is not None:
+                    svc.delete_message(session, user_msg.id)
+                yield _sse("error", {"detail": "Internal server error", "status": 500})
         finally:
             session.close()
 
@@ -157,3 +176,28 @@ async def stream_message(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post(
+    "/{conversation_id}/messages/stream",
+    dependencies=[Depends(chat_rate_limit), Depends(daily_token_budget)],
+    summary="Send a message and stream the answer word by word (Server-Sent Events)",
+    response_description="text/event-stream with events: user_message, delta, done, title, error",
+)
+async def stream_message(conversation_id: str, body: MessageIn, db: Session = Depends(get_db),
+                         ai: OpenAIService = Depends(get_ai_service)):
+    # Validate before opening the stream so a bad id is a normal 404.
+    await run_in_threadpool(svc.get_conversation, db, conversation_id)
+    return _answer_stream(conversation_id, ai, body.content)
+
+
+@router.post(
+    "/{conversation_id}/regenerate",
+    dependencies=[Depends(chat_rate_limit), Depends(daily_token_budget)],
+    summary="Regenerate the last answer (Server-Sent Events)",
+    response_description="text/event-stream with events: delta, done, title, error",
+)
+async def regenerate(conversation_id: str, db: Session = Depends(get_db), ai: OpenAIService = Depends(get_ai_service)):
+    # 404 / 409 before opening the stream
+    await run_in_threadpool(svc.prepare_regenerate, db, conversation_id)
+    return _answer_stream(conversation_id, ai, None)

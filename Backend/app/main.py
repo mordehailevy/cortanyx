@@ -7,7 +7,9 @@ Docs: http://localhost:8000/docs
 import logging
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -16,15 +18,20 @@ from app.config import get_settings
 from app.database import get_db
 from app.routers import conversations
 from app.schemas import Health
+from app.security import SecurityMiddleware
 from app.services.openai_service import AIServiceError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 settings = get_settings()
 
+MAX_BODY_BYTES = 64 * 1024  # a chat message is at most 8000 characters
+
+docs = {} if settings.enable_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(
-    title="ChatGPT Clone API",
-    version="1.0.0",
-    description="REST API of the ChatGPT Clone final project (FastAPI + MySQL + OpenAI) - by Mordehai Levy.",
+    title="Cortanyx API",
+    version="1.1.0",
+    description="REST API of Cortanyx, the ChatGPT-style final project (FastAPI + MySQL + OpenAI) - by Mordehai Levy.",
+    **docs,
 )
 
 app.add_middleware(
@@ -33,11 +40,21 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
+# only answer to known host names (protects a local API against DNS rebinding)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+app.add_middleware(SecurityMiddleware, max_body_bytes=MAX_BODY_BYTES)
 
 
 @app.exception_handler(AIServiceError)
 async def ai_error_handler(_: Request, exc: AIServiceError):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_: Request, exc: RequestValidationError):
+    # same shape as FastAPI's default, without echoing the submitted values back
+    errors = [{k: v for k, v in e.items() if k not in ("input", "ctx", "url")} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 @app.get("/api/health", response_model=Health, tags=["System"], summary="Check the API, database and configuration")

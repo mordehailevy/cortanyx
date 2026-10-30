@@ -1,11 +1,21 @@
 """Pydantic request / response models (the public API contract)."""
 
-from datetime import datetime
+import unicodedata
+from datetime import datetime, timezone
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator, model_validator
 
 from app.config import get_settings
 from app.models import Role
+
+
+def _to_utc(dt: datetime) -> str:
+    """Dates are stored in the server's local time; the API always answers in UTC ("...Z")."""
+    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+UtcDatetime = Annotated[datetime, PlainSerializer(_to_utc, return_type=str)]
 
 
 class MessageOut(BaseModel):
@@ -14,7 +24,8 @@ class MessageOut(BaseModel):
     id: int
     role: Role
     content: str
-    created_at: datetime
+    interrupted: bool = False
+    created_at: UtcDatetime
 
 
 class ConversationOut(BaseModel):
@@ -23,24 +34,37 @@ class ConversationOut(BaseModel):
     id: str
     title: str
     model: str
-    created_at: datetime
-    updated_at: datetime
+    pinned: bool
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
 
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut]
 
 
-class ConversationRename(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
+class ConversationUpdate(BaseModel):
+    """Rename and/or pin a conversation. Send at least one field."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=120, examples=["Learning React"])
+    pinned: bool | None = Field(default=None, examples=[True])
 
     @field_validator("title")
     @classmethod
-    def strip_title(cls, v: str) -> str:
-        v = v.strip()
+    def strip_title(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        # remove control / invisible formatting characters (NUL, bidi overrides...)
+        v = "".join(ch for ch in v if unicodedata.category(ch) not in ("Cc", "Cf")).strip()
         if not v:
             raise ValueError("Title cannot be empty")
         return v
+
+    @model_validator(mode="after")
+    def at_least_one(self) -> "ConversationUpdate":
+        if self.title is None and self.pinned is None:
+            raise ValueError("Send a title and/or pinned")
+        return self
 
 
 class MessageIn(BaseModel):

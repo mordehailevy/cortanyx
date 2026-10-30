@@ -3,20 +3,29 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 
 const MAX_CHARS = 8000
 
+// No automatic focus before the user has done anything on the page: on load, Tab
+// must reach "Skip to content" first, and a phone must not open its keyboard.
+let userHasInteracted = false
+for (const type of ['pointerdown', 'keydown'] as const) {
+  window.addEventListener(type, () => (userHasInteracted = true), { once: true, capture: true })
+}
+
 interface Props {
   onSend: (text: string) => void
   onStop: () => void
   isStreaming: boolean
   focusKey: unknown
+  /** text to start with (a cancelled message given back) */
+  initialValue?: string
 }
 
-export function Composer({ onSend, onStop, isStreaming, focusKey }: Props) {
-  const [value, setValue] = useState('')
+export function Composer({ onSend, onStop, isStreaming, focusKey, initialValue = '' }: Props) {
+  const [value, setValue] = useState(initialValue)
   const ref = useRef<HTMLTextAreaElement>(null)
 
-  // focus the input on load, on "new conversation" and after each answer
+  // focus the input on "new conversation", on opening a conversation and after each answer
   useEffect(() => {
-    if (!isStreaming) ref.current?.focus()
+    if (userHasInteracted && !isStreaming) ref.current?.focus()
   }, [focusKey, isStreaming])
 
   // auto-grow up to ~8 lines
@@ -48,7 +57,7 @@ export function Composer({ onSend, onStop, isStreaming, focusKey }: Props) {
 
   return (
     <form onSubmit={submit} className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-4 sm:pb-4">
-      <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-sm transition-shadow duration-200 focus-within:border-primary/60 focus-within:shadow-md">
+      <div className="flex items-end gap-2 rounded-2xl border border-input bg-surface p-2 shadow-sm transition-shadow duration-200 focus-within:border-primary focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30">
         <label htmlFor="composer" className="sr-only">
           Message Cortanyx
         </label>

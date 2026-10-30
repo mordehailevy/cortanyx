@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from functools import lru_cache
 
 import openai
 from openai import AsyncOpenAI
@@ -50,7 +51,8 @@ class OpenAIService:
 
     async def stream_reply(self, history: list[dict[str, str]]) -> AsyncIterator[StreamChunk]:
         if not self.settings.openai_api_key:
-            raise AIServiceError("OPENAI_API_KEY is missing in Backend/.env.", 500)
+            # 503: a configuration problem, not a bug; the detail stays readable for the developer
+            raise AIServiceError("The assistant is not configured: the server has no OpenAI API key (Backend/.env).", 503)
         try:
             stream = await self.client.chat.completions.create(
                 model=self.settings.openai_model,
@@ -94,6 +96,7 @@ class OpenAIService:
             return None
 
 
+@lru_cache
 def get_ai_service() -> OpenAIService:
-    """FastAPI dependency (overridden with a fake in tests)."""
+    """FastAPI dependency: one shared client (connection reuse). Overridden with a fake in tests."""
     return OpenAIService()

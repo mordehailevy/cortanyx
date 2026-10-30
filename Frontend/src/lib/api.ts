@@ -6,6 +6,8 @@ export interface Message {
   id: number | string
   role: Role
   content: string
+  /** an answer stopped before its end (saved as is) */
+  interrupted?: boolean
   created_at?: string
 }
 
@@ -13,6 +15,7 @@ export interface Conversation {
   id: string
   title: string
   model: string
+  pinned: boolean
   created_at: string
   updated_at: string
 }
@@ -62,8 +65,8 @@ export const api = {
   createConversation: () => request<Conversation>('/api/conversations', { method: 'POST' }),
   listConversations: () => request<Conversation[]>('/api/conversations'),
   getConversation: (id: string) => request<ConversationDetail>(`/api/conversations/${id}`),
-  renameConversation: (id: string, title: string) =>
-    request<Conversation>(`/api/conversations/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+  updateConversation: (id: string, changes: { title?: string; pinned?: boolean }) =>
+    request<Conversation>(`/api/conversations/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   deleteConversation: (id: string) => request<void>(`/api/conversations/${id}`, { method: 'DELETE' }),
 }
 
@@ -75,18 +78,22 @@ export interface StreamHandlers {
 }
 
 /** POST a message and read the Server-Sent Events answer chunk by chunk. */
-export async function streamMessage(
-  conversationId: string,
-  content: string,
-  handlers: StreamHandlers,
-  signal: AbortSignal,
-): Promise<void> {
+export function streamMessage(conversationId: string, content: string, handlers: StreamHandlers, signal: AbortSignal) {
+  return readStream(`/api/conversations/${conversationId}/messages/stream`, { content }, handlers, signal)
+}
+
+/** Ask for a new version of the last answer (same events, without `user_message`). */
+export function streamRegenerate(conversationId: string, handlers: StreamHandlers, signal: AbortSignal) {
+  return readStream(`/api/conversations/${conversationId}/regenerate`, undefined, handlers, signal)
+}
+
+async function readStream(path: string, body: unknown, handlers: StreamHandlers, signal: AbortSignal): Promise<void> {
   let res: Response
   try {
-    res = await fetch(`${BASE}/api/conversations/${conversationId}/messages/stream`, {
+    res = await fetch(BASE + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal,
     })
   } catch (e) {
@@ -97,22 +104,28 @@ export async function streamMessage(
 
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
+  let finished = false
   for (;;) {
     const { value, done } = await reader.read()
     if (done) break
-    buffer += value
+    buffer += value.replace(/\r\n?/g, '\n')
     let sep: number
     while ((sep = buffer.indexOf('\n\n')) !== -1) {
       const block = buffer.slice(0, sep)
       buffer = buffer.slice(sep + 2)
       let event = 'message'
-      let data = ''
+      const data: string[] = []
       for (const line of block.split('\n')) {
-        if (line.startsWith('event: ')) event = line.slice(7)
-        else if (line.startsWith('data: ')) data += line.slice(6)
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
       }
-      if (!data) continue
-      const payload = JSON.parse(data)
+      if (!data.length) continue
+      let payload
+      try {
+        payload = JSON.parse(data.join('\n'))
+      } catch {
+        continue // ignore a malformed event instead of breaking the whole answer
+      }
       switch (event) {
         case 'user_message':
           handlers.onUserMessage?.(payload)
@@ -121,14 +134,17 @@ export async function streamMessage(
           handlers.onDelta(payload.text)
           break
         case 'done':
+          finished = true
           handlers.onDone(payload)
           break
         case 'title':
           handlers.onTitle?.(payload.title)
           break
         case 'error':
-          throw new ApiError(payload.detail, payload.status)
+          // an error after `done` cannot undo a saved answer: ignore it
+          if (!finished) throw new ApiError(payload.detail, payload.status)
       }
     }
   }
+  if (!finished) throw new ApiError('The connection was interrupted before the answer finished.', 0)
 }

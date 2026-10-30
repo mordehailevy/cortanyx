@@ -9,13 +9,18 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 NAME="MordehaiLevy"
 OUT="$ROOT/submission"
 
+# the database export must match the current schema (pinned column)
+grep -q '`pinned`' "$ROOT/Database/chatgpt_clone.sql" || { echo "ERROR: Database/chatgpt_clone.sql is outdated (no pinned column): re-export it" >&2; exit 1; }
+
 rm -rf "$OUT"
+rm -f "$ROOT/$NAME.zip"   # zip would otherwise update the old archive and keep deleted files
 mkdir -p "$OUT/$NAME"
 
 rsync -a "$ROOT/" "$OUT/$NAME/" \
   --exclude 'submission/' \
   --exclude '.git/' \
   --exclude '.claude/' \
+  --exclude 'docs/audit/' \
   --exclude 'Backend/env/' \
   --exclude 'Backend/.env' \
   --exclude 'Frontend/.env' \

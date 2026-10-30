@@ -19,10 +19,10 @@ export const GITHUB_URL = 'https://github.com/mordehailevy/cortanyx'
 
 const features = [
   { icon: MessagesSquare, title: 'Real conversations', text: 'Every answer uses the whole conversation as context, stored in MySQL.' },
-  { icon: Zap, title: 'Live streaming', text: 'Answers appear word by word (Server-Sent Events), with a Stop button.' },
+  { icon: Zap, title: 'Live streaming', text: 'Answers appear word by word (Server-Sent Events), with Stop and Regenerate.' },
   { icon: FileCode2, title: 'Rich answers', text: 'Markdown, tables and syntax-highlighted code with one-click copy.' },
   { icon: Languages, title: 'Hebrew, English, French', text: 'Each message picks its own direction: right-to-left or left-to-right.' },
-  { icon: Layers, title: 'History', text: 'Auto-generated titles, reopen, rename or delete past conversations.' },
+  { icon: Layers, title: 'History', text: 'Pinned and recent conversations, search, auto titles, rename and delete.' },
   { icon: Lock, title: 'Secure by design', text: 'OpenAI is called only by the server; the API key lives in a server-side .env.' },
 ]
 

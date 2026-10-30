@@ -17,6 +17,8 @@
   --color-muted-foreground: #475569;
   --color-border: #e4ecfc;
   --color-destructive: #dc2626;
+  --color-on-destructive: #ffffff; /* 4.8:1 on #dc2626 */
+  --color-input: #8392a8; /* field outline, >= 3:1 on white and surface */
   --color-ring: #2563eb;
 }
 
@@ -32,6 +34,8 @@
   --color-muted-foreground: #94a3b8;
   --color-border: #1e293b;
   --color-destructive: #f87171;
+  --color-on-destructive: #450a0a; /* 6.3:1 on #f87171 */
+  --color-input: #64748b; /* >= 3:1 on the dark background */
   --color-ring: #60a5fa;
 }
 
@@ -47,6 +51,8 @@
   --color-muted-foreground: var(--color-muted-foreground);
   --color-border: var(--color-border);
   --color-destructive: var(--color-destructive);
+  --color-on-destructive: var(--color-on-destructive);
+  --color-input: var(--color-input);
   --color-ring: var(--color-ring);
   --font-sans: 'Inter', 'Noto Sans Hebrew', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
