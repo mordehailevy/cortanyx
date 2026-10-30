@@ -385,3 +385,22 @@ def test_stopped_answer_is_counted_in_the_budget(client, session_factory):
     _cancel_after(cid, SlowAI(["Once ", "upon "]), events_before_cancel=3)
     with session_factory() as s:
         assert svc.tokens_last_24h(s) > 0
+
+
+def test_usage_log_failure_never_breaks_the_answer(client, monkeypatch, session_factory):
+    def broken_log(*args, **kwargs):
+        raise RuntimeError("usage log down")
+
+    monkeypatch.setattr(svc, "log_usage", broken_log)
+    cid = new_conversation(client)
+    events = parse_sse(client.post(f"/api/conversations/{cid}/messages/stream", json={"content": "Hi"}).text)
+    assert "done" in [e for e, _ in events] and "error" not in [e for e, _ in events]
+    assert [m[0] for m in _messages(session_factory, cid)] == [Role.user, Role.assistant]
+    _cancel_after(cid, SlowAI(["Once "]), events_before_cancel=2)  # a Stop with a failing log still saves
+    assert _messages(session_factory, cid)[-1] == (Role.assistant, "Once ")
+
+
+def test_new_conversation_left_before_first_word_is_removed(client):
+    cid = new_conversation(client)
+    _cancel_after(cid, SlowAI([]), events_before_cancel=1)
+    assert client.get(f"/api/conversations/{cid}").status_code == 404

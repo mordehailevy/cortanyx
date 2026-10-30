@@ -146,6 +146,15 @@ def set_title(db: Session, conversation_id: str, title: str) -> None:
         db.commit()
 
 
+def delete_if_empty(db: Session, conversation_id: str) -> None:
+    """Remove a conversation that never got any message (e.g. tab closed before the first word)."""
+    conv = db.get(Conversation, conversation_id)
+    has_message = db.scalar(select(Message.id).where(Message.conversation_id == conversation_id).limit(1))
+    if conv is not None and has_message is None and conv.title == DEFAULT_TITLE:
+        db.delete(conv)
+        db.commit()
+
+
 def set_title_if_default(db: Session, conversation_id: str, title: str) -> None:
     conv = db.get(Conversation, conversation_id)
     if conv is not None and conv.title == DEFAULT_TITLE and title:

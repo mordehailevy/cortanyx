@@ -86,7 +86,7 @@ async def send_message(
         raise
     assistant_msg = await run_in_threadpool(svc.add_message, db, conversation_id, Role.assistant, text, tokens)
     await run_in_threadpool(
-        svc.log_usage, db, "answer", tokens or svc.estimate_tokens(text, *(m["content"] for m in history))
+        _safe_log, db, "answer", tokens or svc.estimate_tokens(text, *(m["content"] for m in history))
     )
     await _maybe_title(ai, db, conversation_id, body.content, text)
     conv = await run_in_threadpool(svc.get_conversation, db, conversation_id)
@@ -96,6 +96,15 @@ async def send_message(
         user_message=MessageOut.model_validate(user_msg),
         assistant_message=MessageOut.model_validate(assistant_msg),
     )
+
+
+def _safe_log(db: Session, kind: str, tokens: int) -> None:
+    """Count tokens in the usage log; a failure here must never break the chat contract."""
+    try:
+        svc.log_usage(db, kind, tokens)
+    except Exception:
+        db.rollback()
+        log.exception("Usage log failed")
 
 
 def _sse(event: str, data: dict) -> str:
@@ -140,6 +149,11 @@ def _answer_stream(conversation_id: str, ai: OpenAIService, content: str | None)
                     if chunk.total_tokens:
                         tokens = chunk.total_tokens
             except AIServiceError as exc:
+                if parts:
+                    # OpenAI failed mid-answer: the words already generated were billed
+                    await run_in_threadpool(
+                        _safe_log, session, "error", svc.estimate_tokens("".join(parts), *(m["content"] for m in history))
+                    )
                 if user_msg is not None:
                     await run_in_threadpool(svc.delete_message, session, user_msg.id)
                 yield _sse("error", {"detail": exc.message, "status": exc.status_code})
@@ -156,7 +170,7 @@ def _answer_stream(conversation_id: str, ai: OpenAIService, content: str | None)
                 raise
             saved = True
             await run_in_threadpool(
-                svc.log_usage,
+                _safe_log,
                 session,
                 "answer" if content is not None else "regenerate",
                 tokens or svc.estimate_tokens("".join(parts), *(m["content"] for m in history)),
@@ -166,16 +180,20 @@ def _answer_stream(conversation_id: str, ai: OpenAIService, content: str | None)
             if title:
                 yield _sse("title", {"title": title})
         except asyncio.CancelledError:
-            # "Stop" pressed or page closed (client disconnected)
-            if history and not saved:
-                # the prompt was sent and some words generated: count them in the budget
-                svc.log_usage(session, "interrupted", svc.estimate_tokens("".join(parts), *(m["content"] for m in history)))
+            # "Stop" pressed or page closed (client disconnected).
+            # Nothing to do while the answer is being inserted by another thread (the
+            # session is not shared between threads); otherwise save first, count after.
             if not saved and not inserting:
                 if parts:
                     svc.save_answer(session, conversation_id, "".join(parts), tokens, replaced_id, interrupted=True)
                     svc.set_title_if_default(session, conversation_id, svc.fallback_title(user_text))
                 elif user_msg is not None:
                     svc.delete_message(session, user_msg.id)
+                    # a new conversation left before any answer must not stay empty in the list
+                    svc.delete_if_empty(session, conversation_id)
+                if history:
+                    # the prompt was sent (and maybe some words generated): count it in the budget
+                    _safe_log(session, "interrupted", svc.estimate_tokens("".join(parts), *(m["content"] for m in history)))
             raise
         except Exception:
             log.exception("Streaming failed")
