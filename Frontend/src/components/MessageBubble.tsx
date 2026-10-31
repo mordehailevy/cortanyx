@@ -59,7 +59,7 @@ export const MessageBubble = memo(function MessageBubble({
           <div
             dir="auto"
             lang={lang}
-            className={`prose prose-slate max-w-full break-words pt-0.5 text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-headings:mb-2 prose-headings:mt-4 prose-li:my-0.5 ${
+            className={`prose prose-stone max-w-full break-words pt-0.5 text-[15px] leading-relaxed dark:prose-invert prose-p:my-2 prose-headings:mb-2 prose-headings:mt-4 prose-li:my-0.5 ${
               message.streaming && message.content ? 'streaming-caret' : ''
             }`}
           >

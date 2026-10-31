@@ -57,7 +57,7 @@ export function Composer({ onSend, onStop, isStreaming, focusKey, initialValue =
 
   return (
     <form onSubmit={submit} className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-4 sm:pb-4">
-      <div className="flex items-end gap-2 rounded-2xl border border-input bg-surface p-2 shadow-sm transition-shadow duration-200 focus-within:border-primary focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30">
+      <div className="flex items-end gap-2 rounded-2xl border border-input bg-white p-2 shadow-sm dark:bg-muted transition-shadow duration-200 focus-within:border-primary focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30">
         <label htmlFor="composer" className="sr-only">
           Message Cortanyx
         </label>
