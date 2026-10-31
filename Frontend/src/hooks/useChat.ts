@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { pinnedOrderWith, sortConversations, type PinAnchor } from '../lib/pinned'
 import { api, streamMessage, streamRegenerate, type Conversation, type Message, type StreamHandlers } from '../lib/api'
 
 export interface UiMessage extends Message {
@@ -18,11 +19,14 @@ const isAbort = (e: unknown) => (e as Error).name === 'AbortError'
  * Each conversation has its own URL (/chat/:id), so a reload reopens it;
  * the database always matches what is on screen.
  */
+/** What a sidebar move did, so it is announced only when it really happened. */
+export type PlaceResult = 'done' | 'unchanged' | 'failed'
+
 export function useChat() {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<UiMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const [error, setError] = useState<{ text: string; failedPrompt?: string } | null>(null)
+  const [error, setError] = useState<{ text: string; failedPrompt?: string; transient?: boolean } | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
   const [loadingConversation, setLoadingConversation] = useState(false)
@@ -247,6 +251,13 @@ export function useChat() {
     if (!keepError) setError(null)
   }, [])
 
+  // an error from a sidebar action (pin, rename, delete) goes away by itself
+  useEffect(() => {
+    if (!error?.transient) return
+    const timer = setTimeout(() => setError((current) => (current === error ? null : current)), 6000)
+    return () => clearTimeout(timer)
+  }, [error])
+
   /** Loads a conversation; returns false when it does not exist (bad or deleted link). */
   const openConversation = useCallback(async (id: string): Promise<boolean> => {
     // its first message failed and it was deleted on purpose: go home, keep the real error
@@ -269,14 +280,22 @@ export function useChat() {
     }
   }, [])
 
+  /** true when the server accepted the change */
   const updateConversation = useCallback(async (id: string, changes: { title?: string; pinned?: boolean }) => {
     try {
       const updated = await api.updateConversation(id, changes)
       setConversations((list) => sortConversations(list.map((c) => (c.id === id ? updated : c))))
+      return true
     } catch (e) {
-      setError({ text: (e as Error).message })
+      if ((e as { status?: number }).status === 404) {
+        // deleted elsewhere (another tab, Postman): drop the stale row, leave its page
+        setConversations((list) => list.filter((c) => c.id !== id))
+        if (activeRef.current === id) newChat(true)
+      }
+      setError({ text: (e as Error).message, transient: true })
+      return false
     }
-  }, [])
+  }, [newChat])
 
   const renameConversation = useCallback(
     (id: string, title: string) => updateConversation(id, { title }),
@@ -284,27 +303,31 @@ export function useChat() {
   )
 
   const togglePin = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const conv = conversations.find((c) => c.id === id)
-      if (conv) void updateConversation(id, { pinned: !conv.pinned })
+      return conv ? updateConversation(id, { pinned: !conv.pinned }) : false
     },
     [conversations, updateConversation],
   )
 
+  // a later reorder wins: an older answer arriving last must not undo it on screen
+  const reorderSeq = useRef(0)
+
   /**
-   * Drag and drop in the sidebar: put a conversation among the pinned ones at `index`
-   * (pinning it if needed), or back in Recents (`index` null = unpin).
+   * Drag and drop and Move up / Move down in the sidebar: put a conversation among the pinned
+   * ones next to `anchor` (pinning it if needed), or back in Recents (`anchor` null = unpin).
    */
   const placeConversation = useCallback(
-    async (id: string, index: number | null) => {
+    async (id: string, anchor: PinAnchor | null): Promise<PlaceResult> => {
       const conv = conversations.find((c) => c.id === id)
-      if (!conv) return
-      if (index === null) {
-        if (conv.pinned) await updateConversation(id, { pinned: false })
-        return
+      if (!conv) return 'failed'
+      if (anchor === null) {
+        if (!conv.pinned) return 'unchanged'
+        return (await updateConversation(id, { pinned: false })) ? 'done' : 'failed'
       }
-      const pinnedIds = conversations.filter((c) => c.pinned && c.id !== id).map((c) => c.id)
-      pinnedIds.splice(Math.max(0, Math.min(index, pinnedIds.length)), 0, id)
+      const pinnedIds = pinnedOrderWith(conversations, id, anchor)
+      if (!pinnedIds) return 'unchanged' // dropped where it already is
+      const seq = ++reorderSeq.current
       // optimistic: the list moves at once, the server confirms
       setConversations((list) =>
         sortConversations(
@@ -316,36 +339,32 @@ export function useChat() {
       )
       try {
         if (!conv.pinned) await api.updateConversation(id, { pinned: true })
-        setConversations(await api.reorderPinned(pinnedIds))
+        const list = await api.reorderPinned(pinnedIds)
+        if (seq === reorderSeq.current) setConversations(list)
+        return 'done'
       } catch (e) {
-        setError({ text: (e as Error).message })
+        // 409: the list was out of date (changed in another tab); the refresh is enough
+        if ((e as { status?: number }).status !== 409) setError({ text: (e as Error).message, transient: true })
         void refreshHistory()
+        return 'failed'
       }
     },
     [conversations, updateConversation, refreshHistory],
-  )
-
-  /** Keyboard / touch alternative to drag and drop: move a pinned conversation up or down. */
-  const movePinned = useCallback(
-    (id: string, delta: -1 | 1) => {
-      const pinned = conversations.filter((c) => c.pinned)
-      const from = pinned.findIndex((c) => c.id === id)
-      const to = from + delta
-      if (from === -1 || to < 0 || to >= pinned.length) return
-      void placeConversation(id, to)
-    },
-    [conversations, placeConversation],
   )
 
   const deleteConversation = useCallback(
     async (id: string) => {
       try {
         await api.deleteConversation(id)
-        setConversations((list) => list.filter((c) => c.id !== id))
-        if (id === conversationId) newChat()
       } catch (e) {
-        setError({ text: (e as Error).message })
+        // already deleted elsewhere: the result is the same
+        if ((e as { status?: number }).status !== 404) {
+          setError({ text: (e as Error).message, transient: true })
+          return
+        }
       }
+      setConversations((list) => list.filter((c) => c.id !== id))
+      if (id === conversationId) newChat()
     },
     [conversationId, newChat],
   )
@@ -369,7 +388,6 @@ export function useChat() {
     renameConversation,
     togglePin,
     placeConversation,
-    movePinned,
     deleteConversation,
   }
 }
@@ -406,13 +424,3 @@ const pendingDraft = {
 
 /** A given-back text fills the input once; afterwards the input starts empty again. */
 const consumeDraft = (d: { text: string; n: number } | null) => (d && d.text ? { text: '', n: d.n } : d)
-
-/** Pinned first in their chosen order, then most recent activity (same order as the API). */
-function sortConversations(list: Conversation[]): Conversation[] {
-  return [...list].sort(
-    (a, b) =>
-      Number(b.pinned) - Number(a.pinned) ||
-      (a.pinned ? (a.pin_order ?? 0) - (b.pin_order ?? 0) : 0) ||
-      b.updated_at.localeCompare(a.updated_at),
-  )
-}

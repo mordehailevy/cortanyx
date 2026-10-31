@@ -19,6 +19,7 @@ mkdir -p "$OUT/$NAME"
 rsync -a "$ROOT/" "$OUT/$NAME/" \
   --exclude 'submission/' \
   --exclude '.git/' \
+  --exclude '.githooks/' \
   --exclude '.claude/' \
   --exclude 'docs/audit/' \
   --exclude 'Backend/env/' \

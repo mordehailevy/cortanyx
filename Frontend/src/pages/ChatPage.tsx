@@ -65,7 +65,9 @@ export function ChatPage() {
 
   const current = chat.conversations.find((c) => c.id === chat.conversationId)
   const lastIndex = chat.messages.length - 1
-  const empty = chat.messages.length === 0 && !chat.loadingConversation
+  // a /chat/:id link not loaded yet (first render after a reload): no flash of the new-chat screen
+  const loading = chat.loadingConversation || (!!id && id !== chat.conversationId)
+  const empty = chat.messages.length === 0 && !loading
 
   const errorBanner = chat.error && (
     <div
@@ -148,7 +150,7 @@ export function ChatPage() {
       ) : (
         <>
           <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin flex-1 overflow-y-auto">
-            {chat.loadingConversation ? (
+            {loading ? (
               <div className="mx-auto max-w-3xl space-y-6 px-4 py-8" aria-label="Loading conversation" role="status">
                 {[0, 1, 2].map((i) => (
                   <div key={i} className={`h-14 animate-pulse rounded-2xl bg-muted ${i % 2 ? 'w-2/3' : 'ms-auto w-1/2'}`} />

@@ -38,8 +38,8 @@ React SPA → Python FastAPI REST API → MySQL, with OpenAI called **only from 
 - Clear **error handling**: missing or invalid key, quota, network: friendly message + **Retry**; a failed message is rolled back so the database never holds unanswered messages.
 - **Spending guards**: 20 messages per minute per client, a daily token budget (`DAILY_TOKEN_BUDGET`) read from a usage log that deleting or regenerating cannot reset, 8000-character messages, context capped at 40 messages and 48 000 characters.
 - **Light / dark theme**, responsive 375 → 1440 px, accessible (WCAG 2.1 AA contrast, full keyboard use, focus kept in dialogs and the mobile drawer, screen-reader labels, `lang="he"` on Hebrew text, `prefers-reduced-motion`).
-- **53 automated tests**: 44 server tests (pytest, fake OpenAI client: no network, no cost) for context, streaming contract (Stop before / during an answer), regenerate, pinning, validation, limits, security; and 9 browser-side tests (Vitest) for the streaming reader.
-- **Postman collection** (13 requests with test scripts, including the SSE stream) and interactive Swagger docs at `/docs`.
+- **63 automated tests**: 46 server tests (pytest, fake OpenAI client: no network, no cost) for context, streaming contract (Stop before / during an answer), regenerate, pinning, validation, limits, security; and 17 browser-side tests (Vitest) for the streaming reader and the pinned order (drag and drop, search filter).
+- **Postman collection** (18 requests with test scripts, including the SSE stream) and interactive Swagger docs at `/docs`.
 - **Audited** before delivery by 7 specialised review agents (brief compliance, senior code review, real users, security, design and accessibility, the course grader, QA), round after round until all of them validated the project.
 
 ---
@@ -104,7 +104,8 @@ SELECT * FROM chatgpt_clone.v_conversation_messages;
 MordehaiLevy/
 ├── Database/
 │   ├── schema.sql              # tables + readable view
-│   └── chatgpt_clone.sql       # full export (structure + sample data)
+│   ├── chatgpt_clone.sql       # full export (structure + sample data)
+│   └── migrations/             # upgrade an older database without re-importing
 ├── Backend/                    # FastAPI
 │   ├── app/
 │   │   ├── main.py             # app, CORS, error handlers, /api/health
@@ -143,7 +144,7 @@ Import the export (structure + view + sample conversations). Drop `-p` if your l
 mysql -u root -p < Database/chatgpt_clone.sql
 ```
 
-(`Database/schema.sql` creates the same structure without data. Both **drop and recreate** the `chatgpt_clone` database tables.)
+(`Database/schema.sql` creates the same structure without data. Both **drop and recreate** the `chatgpt_clone` database tables. A database created before drag and drop is upgraded, without losing data, by `Database/migrations/001_pin_order.sql`.)
 
 The app connects with its own user, which only gets data rights. Create it (or put your own user in `DATABASE_URL`):
 

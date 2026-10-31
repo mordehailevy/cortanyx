@@ -45,7 +45,10 @@ function Shell() {
       return !c
     })
 
-  const pageTitle = location.pathname === '/about' ? 'About' : chat.conversations.find((c) => c.id === chat.conversationId)?.title ?? 'New chat'
+  const current = chat.conversations.find((c) => c.id === chat.conversationId)
+  // a conversation link still loading: no "New chat" flash in the tab title
+  const pageTitle =
+    location.pathname === '/about' ? 'About' : (current?.title ?? (location.pathname.startsWith('/chat/') ? null : 'New chat'))
 
   // any navigation closes the mobile drawer (e.g. deleting the open conversation from it);
   // adjusted while rendering, as React recommends for state that follows a prop
@@ -57,7 +60,7 @@ function Shell() {
 
   // the browser tab tells where you are (and screen readers announce it)
   useEffect(() => {
-    document.title = `${pageTitle} · Cortanyx`
+    document.title = pageTitle ? `${pageTitle} · Cortanyx` : 'Cortanyx'
   }, [pageTitle])
 
   return (
@@ -120,7 +123,7 @@ function Shell() {
             <MenuIcon className="size-5" />
           </button>
           <LogoMark className="size-6" />
-          <span dir="auto" lang={langOf(pageTitle)} className="min-w-0 flex-1 truncate text-sm font-medium">
+          <span dir="auto" lang={langOf(pageTitle ?? '')} className="min-w-0 flex-1 truncate text-sm font-medium">
             {pageTitle}
           </span>
           <button

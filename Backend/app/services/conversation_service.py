@@ -26,6 +26,7 @@ def list_conversations(db: Session, limit: int = 100) -> list[Conversation]:
         select(Conversation)
         .order_by(
             Conversation.pinned.desc(),
+            Conversation.pin_order.is_(None),  # pinned before drag and drop existed: last (as in MySQL and SQLite alike)
             Conversation.pin_order.asc(),  # pinned: the order chosen by drag and drop
             Conversation.updated_at.desc(),  # recents: latest activity first
             Conversation.created_at.desc(),

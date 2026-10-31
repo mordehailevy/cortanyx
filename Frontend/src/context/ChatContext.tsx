@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { ConfirmDeleteDialog, RenameDialog } from '../components/Dialogs'
-import { useChat, type ChatState } from '../hooks/useChat'
+import { useChat, type ChatState, type PlaceResult } from '../hooks/useChat'
 import type { Conversation } from '../lib/api'
+import type { PinAnchor } from '../lib/pinned'
 
 interface ContextValue extends ChatState {
   askRename: (c: Conversation) => void
@@ -14,9 +15,8 @@ const ChatContext = createContext<ContextValue | null>(null)
 
 // Actions that do not change while an answer streams, for memoized list items.
 interface Actions {
-  togglePin: (id: string) => void
-  placeConversation: (id: string, index: number | null) => void
-  movePinned: (id: string, delta: -1 | 1) => void
+  togglePin: (id: string) => Promise<boolean>
+  placeConversation: (id: string, anchor: PinAnchor | null) => Promise<PlaceResult>
   askRename: (c: Conversation) => void
   askDelete: (c: Conversation) => void
 }
@@ -28,16 +28,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [deleting, setDeleting] = useState<Conversation | null>(null)
 
   const value: ContextValue = { ...chat, askRename: setRenaming, askDelete: setDeleting }
-  const { togglePin, placeConversation, movePinned } = chat
+  const { togglePin, placeConversation } = chat
   const actions = useMemo<Actions>(
     () => ({
       togglePin,
-      placeConversation: (id, index) => void placeConversation(id, index),
-      movePinned,
+      placeConversation,
       askRename: setRenaming,
       askDelete: setDeleting,
     }),
-    [togglePin, placeConversation, movePinned],
+    [togglePin, placeConversation],
   )
 
   return (

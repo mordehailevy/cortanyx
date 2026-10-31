@@ -4,7 +4,7 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictBool, StringConstraints, field_validator, model_validator
 
 from app.config import get_settings
 from app.models import Role
@@ -48,7 +48,7 @@ class ConversationUpdate(BaseModel):
     """Rename and/or pin a conversation. Send at least one field."""
 
     title: str | None = Field(default=None, min_length=1, max_length=120, examples=["Learning React"])
-    pinned: bool | None = Field(default=None, examples=[True])
+    pinned: StrictBool | None = Field(default=None, examples=[True])
 
     @field_validator("title")
     @classmethod
@@ -71,7 +71,7 @@ class ConversationUpdate(BaseModel):
 class PinnedOrder(BaseModel):
     """New order of the pinned conversations, first to last."""
 
-    ids: list[str] = Field(min_length=1, max_length=500)
+    ids: list[Annotated[str, StringConstraints(max_length=36)]] = Field(min_length=1, max_length=500)
 
     @field_validator("ids")
     @classmethod

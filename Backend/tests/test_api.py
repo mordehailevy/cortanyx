@@ -442,6 +442,29 @@ def test_pinning_appends_and_reorder_moves(client):
     assert client.get(f"/api/conversations/{c}").json()["pin_order"] is None
 
 
+def test_repin_keeps_place_and_unpin_then_pin_goes_last(client):
+    a, b = new_conversation(client), new_conversation(client)
+    for cid in (a, b):
+        client.patch(f"/api/conversations/{cid}", json={"pinned": True})
+    client.patch(f"/api/conversations/{a}", json={"pinned": True})  # already pinned: stays first
+    assert _pinned_ids(client) == [a, b]
+    client.patch(f"/api/conversations/{a}", json={"pinned": False})
+    client.patch(f"/api/conversations/{a}", json={"pinned": True})
+    assert _pinned_ids(client) == [b, a]
+
+
+def test_pinned_without_order_are_listed_last(client, session_factory):
+    from app.models import Conversation
+
+    a, b = new_conversation(client), new_conversation(client)
+    for cid in (a, b):
+        client.patch(f"/api/conversations/{cid}", json={"pinned": True})
+    with session_factory() as s:  # pinned before pin_order existed
+        s.get(Conversation, a).pin_order = None
+        s.commit()
+    assert _pinned_ids(client) == [b, a]
+
+
 def test_reorder_pinned_validation(client):
     a, b = new_conversation(client), new_conversation(client)
     client.patch(f"/api/conversations/{a}", json={"pinned": True})
@@ -449,3 +472,5 @@ def test_reorder_pinned_validation(client):
     assert client.put("/api/conversations/pinned-order", json={"ids": [a, a]}).status_code == 422
     assert client.put("/api/conversations/pinned-order", json={"ids": ["nope"]}).status_code == 404
     assert client.put("/api/conversations/pinned-order", json={"ids": []}).status_code == 422
+    assert client.put("/api/conversations/pinned-order", json={"ids": ["x" * 37]}).status_code == 422
+    assert client.patch(f"/api/conversations/{a}", json={"pinned": "yes"}).status_code == 422
