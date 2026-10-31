@@ -21,7 +21,7 @@ const features = [
   { icon: MessagesSquare, title: 'Real conversations', text: 'Every answer uses the whole conversation as context, stored in MySQL.' },
   { icon: Zap, title: 'Live streaming', text: 'Answers appear word by word (Server-Sent Events), with Stop and Regenerate.' },
   { icon: FileCode2, title: 'Rich answers', text: 'Markdown, tables and syntax-highlighted code with one-click copy.' },
-  { icon: Languages, title: 'Hebrew, English, French', text: 'Each message picks its own direction: right-to-left or left-to-right.' },
+  { icon: Languages, title: 'Any language', text: 'Cortanyx answers in your language, and each message picks its own direction: right-to-left or left-to-right.' },
   { icon: Layers, title: 'History', text: 'Pinned and recent conversations (drag and drop), search, auto titles, rename, delete.' },
   { icon: Lock, title: 'Secure by design', text: 'OpenAI is called only by the server; the API key lives in a server-side .env.' },
 ]

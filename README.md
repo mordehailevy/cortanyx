@@ -33,7 +33,7 @@ React SPA → Python FastAPI REST API → MySQL, with OpenAI called **only from 
 - **Streaming** answers word by word (Server-Sent Events) with a **Stop** button. Stopped mid-answer, the partial answer is kept (and marked *Stopped*) so the context stays exact; stopped before the first word, the question is removed.
 - **Regenerate** the last answer (after a Stop, a cut connection, or just to get another version); the old answer is replaced only once the new one exists.
 - **Markdown** rendering: tables, lists, **syntax-highlighted code** with a copy button.
-- **Hebrew / English / French**: every message sets its own direction automatically (`dir="auto"`), the model answers in the user's language.
+- **Any language**: the model answers in the user's language, and every message sets its own direction automatically (`dir="auto"`, Hebrew and Arabic right-to-left).
 - **Claude-style sidebar**: collapsible, **pinned** and recent conversations (**drag and drop** with the mouse to pin, reorder or unpin; *Move up / Move down* in the menu for keyboard and touch), search, per-conversation menu (pin, rename, delete), AI-generated titles, a URL per conversation (`/chat/<id>`).
 - Clear **error handling**: missing or invalid key, quota, network: friendly message + **Retry**; a failed message is rolled back so the database never holds unanswered messages.
 - **Spending guards**: 20 messages per minute per client, a daily token budget (`DAILY_TOKEN_BUDGET`) read from a usage log that deleting or regenerating cannot reset, 8000-character messages, context capped at 40 messages and 48 000 characters.

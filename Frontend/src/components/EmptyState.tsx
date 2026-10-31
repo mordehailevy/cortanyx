@@ -41,7 +41,7 @@ export function EmptyState({
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{greeting()}</h1>
       </motion.div>
       <p className="mb-6 px-4 text-center text-muted-foreground">
-        Think out loud in English, <span lang="he">עברית</span> or français.
+        Think out loud, in any language.
         <br className="max-sm:hidden" /> Cortanyx connects every thread of your conversation.
       </p>
 
