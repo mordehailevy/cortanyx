@@ -32,6 +32,51 @@ const stack = [
   { icon: Database, layer: 'Database', items: 'MySQL 8+ · conversations & messages tables · readable SQL view' },
 ]
 
+/**
+ * Arrow between two steps of "How it works", drawn as a thread when it scrolls into view.
+ * A node then carries the message to OpenAI and the answer back, once.
+ */
+function Thread({ index, count }: { index: number; count: number }) {
+  const reduce = useReducedMotion()
+  const hop = 0.45
+  const there = 1.1 + index * hop
+  // the answer comes back from OpenAI: last thread first
+  const back = 1.1 + count * hop + 0.15 + (count - 1 - index) * hop
+  const view = { once: true, amount: 0.6 }
+  return (
+    <svg viewBox="0 0 32 16" className="h-4 w-8 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" aria-hidden="true">
+      <motion.path
+        d="M2 8h26M24 4l4.5 4-4.5 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={reduce ? false : { pathLength: 0 }}
+        whileInView={{ pathLength: 1 }}
+        viewport={view}
+        transition={{ duration: 0.4, delay: index * 0.25, ease: 'easeOut' }}
+      />
+      {!reduce &&
+        [
+          { from: 2, to: 26, delay: there },
+          { from: 26, to: 2, delay: back },
+        ].map((p) => (
+          <motion.circle
+            key={p.delay}
+            cy="8"
+            r="3"
+            className="fill-primary"
+            initial={{ cx: p.from, opacity: 0 }}
+            whileInView={{ cx: [p.from, p.to], opacity: [0, 1, 1, 0] }}
+            viewport={view}
+            transition={{ duration: hop, delay: p.delay, ease: 'linear' }}
+          />
+        ))}
+    </svg>
+  )
+}
+
 function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
   const reduce = useReducedMotion()
   return (
@@ -91,9 +136,7 @@ export function AboutPage() {
                   <span className="flex-1 rounded-xl border border-border bg-surface px-4 py-3 text-center font-medium">
                     {step}
                   </span>
-                  {i < all.length - 1 && (
-                    <ArrowRight className="size-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" aria-hidden="true" />
-                  )}
+                  {i < all.length - 1 && <Thread index={i} count={all.length - 1} />}
                 </li>
               ))}
             </ol>
