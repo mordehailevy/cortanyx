@@ -61,6 +61,7 @@ export const MessageBubble = memo(function MessageBubble({
       initial={reduce ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+      data-role={message.role}
       className={`group flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div className={`flex min-w-0 flex-col ${isUser ? 'max-w-[85%] items-end sm:max-w-[75%]' : 'flex-1 items-start'}`}>

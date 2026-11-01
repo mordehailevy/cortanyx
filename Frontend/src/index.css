@@ -154,6 +154,45 @@ body {
   }
 }
 
+/* the thread of the conversation: one node per message on a fine rail
+   (hollow: you, filled: Cortanyx); logical properties, so it moves to the right in Hebrew */
+@media (min-width: 640px) {
+  .thread {
+    --rail-x: 14px;
+    --gap-x: 2.25rem;
+    position: relative;
+    padding-inline-start: var(--gap-x);
+  }
+  .thread::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: var(--rail-x);
+    top: calc(1.5rem + 22px);
+    bottom: 0;
+    width: 1.5px;
+    --rail: color-mix(in srgb, var(--color-muted-foreground) 35%, transparent);
+    background: linear-gradient(var(--rail) calc(100% - 4rem), transparent);
+  }
+  .thread > li {
+    position: relative;
+  }
+  .thread > li::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--rail-x) + 0.75px - var(--gap-x) - 4.5px);
+    /* centred on the first line of text, in the bubble or after the paragraph margin */
+    top: 17.5px;
+    width: 9px;
+    height: 9px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+  }
+  .thread > li[data-role='user']::before {
+    border: 1.5px solid var(--color-muted-foreground);
+    background: var(--color-background);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
