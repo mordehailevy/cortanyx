@@ -7,7 +7,7 @@ React SPA → Python FastAPI REST API → MySQL, with OpenAI called **only from 
 
 **GitHub:** https://github.com/mordehailevy/cortanyx
 
-![Cortanyx - chat with history, Markdown table](docs/screenshots/chat-light.jpg)
+![Cortanyx - chat with history, Markdown, code and the conversation thread](docs/screenshots/chat-light.jpg)
 
 | Hebrew, dark theme, highlighted code | Mobile menu (pinned + recents) | About page |
 |---|---|---|
