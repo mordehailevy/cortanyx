@@ -6,17 +6,35 @@ import { langOf } from '../lib/text'
 import { CopyButton } from './CopyButton'
 import { LazyMarkdown } from './LazyMarkdown'
 
-/** Discreet "thinking" indicator: three small dots that fade in turn. */
-function TypingDots() {
+// the nodes of the logo's M, in the order the light runs through them
+const M_NODES = [
+  [31.6, 71.3],
+  [31.6, 28.6],
+  [50, 50],
+  [68.4, 28.6],
+  [68.4, 71.3],
+]
+
+/** "Thinking" indicator: a light runs along the M of the logo and wakes its nodes in turn. */
+function ThinkingMark() {
   return (
-    <span className="inline-flex items-center gap-1.5 py-2.5" role="status" aria-label="Cortanyx is thinking">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="size-1.5 animate-pulse rounded-full bg-muted-foreground/70"
-          style={{ animationDelay: `${i * 200}ms` }}
+    <span className="inline-flex py-1.5 text-primary" role="status" aria-label="Cortanyx is thinking">
+      <svg viewBox="22 19 56 62" className="h-6 w-auto" aria-hidden="true">
+        <path d="M31.6 71.3V28.6L50 50l18.4-21.4v42.7" fill="none" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" strokeLinejoin="round" />
+        <path
+          className="thinking-trail"
+          d="M31.6 71.3V28.6L50 50l18.4-21.4v42.7"
+          pathLength={100}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
-      ))}
+        {M_NODES.map(([cx, cy], i) => (
+          <circle key={i} className="thinking-node" cx={cx} cy={cy} r="5.5" fill="currentColor" style={{ animationDelay: `${i * 0.24}s` }} />
+        ))}
+      </svg>
     </span>
   )
 }
@@ -63,7 +81,7 @@ export const MessageBubble = memo(function MessageBubble({
               message.streaming && message.content ? 'streaming-caret' : ''
             }`}
           >
-            {waiting ? <TypingDots /> : <LazyMarkdown content={message.content} />}
+            {waiting ? <ThinkingMark /> : <LazyMarkdown content={message.content} />}
           </div>
         )}
 

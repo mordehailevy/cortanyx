@@ -122,6 +122,38 @@ body {
   }
 }
 
+/* "thinking" M: the light runs along the path, each node brightens as it passes */
+.thinking-trail {
+  stroke-dasharray: 22 78;
+  animation: thinking-trail 1.2s linear infinite;
+}
+@keyframes thinking-trail {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+.thinking-node {
+  opacity: 0.6;
+  animation: thinking-node 1.2s ease-in-out infinite;
+}
+@keyframes thinking-node {
+  20% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* a still M, fully drawn */
+  .thinking-trail {
+    stroke-dasharray: none;
+  }
+  .thinking-node {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
