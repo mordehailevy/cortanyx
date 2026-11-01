@@ -191,6 +191,30 @@ body {
     border: 1.5px solid var(--color-muted-foreground);
     background: var(--color-background);
   }
+  /* pointing at a question lights the thread to its answer */
+  .thread > li[data-role='user']:has(+ li[data-role='assistant'])::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--rail-x) - var(--gap-x));
+    /* from the edge of this node to the edge of the answer's node */
+    top: 26.5px;
+    bottom: calc(-1.5rem - 17.5px);
+    width: 1.5px;
+    background: var(--color-primary);
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform 0.35s ease-out;
+    pointer-events: none;
+  }
+  .thread > li[data-role='user']:is(:hover, :focus-within)::after {
+    transform: scaleY(1);
+  }
+  .thread > li[data-role='user']:is(:hover, :focus-within)::before {
+    border-color: var(--color-primary);
+  }
+  .thread > li[data-role='user']:is(:hover, :focus-within) + li::before {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
