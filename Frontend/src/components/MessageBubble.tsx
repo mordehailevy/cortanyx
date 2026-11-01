@@ -20,7 +20,7 @@ function ThinkingMark() {
   return (
     <span className="inline-flex py-1.5 text-primary" role="status" aria-label="Cortanyx is thinking">
       <svg viewBox="22 19 56 62" className="h-6 w-auto" aria-hidden="true">
-        <path d="M31.6 71.3V28.6L50 50l18.4-21.4v42.7" fill="none" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" strokeLinejoin="round" />
+        <path d="M31.6 71.3V28.6L50 50l18.4-21.4v42.7" fill="none" stroke="var(--color-muted-foreground)" strokeWidth="3" strokeLinejoin="round" />
         <path
           className="thinking-trail"
           d="M31.6 71.3V28.6L50 50l18.4-21.4v42.7"

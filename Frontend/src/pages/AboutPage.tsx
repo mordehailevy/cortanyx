@@ -132,8 +132,8 @@ export function AboutPage() {
           <Reveal>
             <ol className="mt-5 flex flex-col items-stretch gap-3 text-sm sm:flex-row sm:items-center">
               {['React SPA', 'FastAPI REST API', 'MySQL', 'OpenAI API'].map((step, i, all) => (
-                <li key={step} className="flex flex-1 items-center gap-3">
-                  <span className="flex-1 rounded-xl border border-border bg-surface px-4 py-3 text-center font-medium">
+                <li key={step} className="flex flex-1 flex-col items-center gap-3 sm:flex-row">
+                  <span className="w-full flex-1 rounded-xl border border-border bg-surface px-4 py-3 text-center font-medium">
                     {step}
                   </span>
                   {i < all.length - 1 && <Thread index={i} count={all.length - 1} />}

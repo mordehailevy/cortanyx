@@ -155,7 +155,8 @@ body {
 }
 
 /* the thread of the conversation: one node per message on a fine rail
-   (hollow: you, filled: Cortanyx); logical properties, so it moves to the right in Hebrew */
+   (hollow: you, filled: Cortanyx). The layout stays left-to-right in every language,
+   like the bubbles: only the text inside them changes direction */
 @media (min-width: 640px) {
   .thread {
     --rail-x: 14px;
@@ -206,7 +207,7 @@ body {
     transition: transform 0.35s ease-out;
     pointer-events: none;
   }
-  .thread > li[data-role='user']:is(:hover, :focus-within)::after {
+  .thread > li[data-role='user']:has(+ li[data-role='assistant']):is(:hover, :focus-within)::after {
     transform: scaleY(1);
   }
   .thread > li[data-role='user']:is(:hover, :focus-within)::before {
