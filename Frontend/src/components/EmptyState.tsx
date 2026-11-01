@@ -37,7 +37,7 @@ export function EmptyState({
         transition={{ type: 'spring', stiffness: 260, damping: 24 }}
         className="mb-6 flex items-center justify-center gap-3 px-4"
       >
-        <LogoMark className="size-9 sm:size-10" />
+        <LogoMark className="size-9 sm:size-10" animated />
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{greeting()}</h1>
       </motion.div>
       <p className="mb-6 px-4 text-center text-muted-foreground">
