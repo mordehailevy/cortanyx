@@ -22,6 +22,7 @@ rsync -a "$ROOT/" "$OUT/$NAME/" \
   --exclude '.githooks/' \
   --exclude '.claude/' \
   --exclude 'docs/audit/' \
+  --exclude 'docs/innovation/' \
   --exclude 'Backend/env/' \
   --exclude 'Backend/.env' \
   --exclude 'Frontend/.env' \
