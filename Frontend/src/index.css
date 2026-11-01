@@ -103,20 +103,22 @@ body {
   overflow-x: auto;
 }
 
-/* blinking caret while the answer streams */
+/* while the answer streams, a breathing node of the logo ends the text */
 .streaming-caret > :last-child::after {
   content: '';
   display: inline-block;
-  width: 0.45em;
-  height: 1em;
-  margin-inline-start: 3px;
-  vertical-align: text-bottom;
+  width: 0.42em;
+  height: 0.42em;
+  margin-inline-start: 0.3em;
+  vertical-align: 0.12em;
+  border-radius: 9999px;
   background: var(--color-primary);
-  animation: caret 1s steps(1) infinite;
+  animation: caret 1.4s ease-in-out infinite;
 }
 @keyframes caret {
   50% {
-    opacity: 0;
+    opacity: 0.65;
+    transform: scale(0.85);
   }
 }
 
